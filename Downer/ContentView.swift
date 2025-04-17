@@ -6,24 +6,40 @@
 //
 
 import SwiftUI
+import AppKit   // for NSOpenPanel
 
 struct ContentView: View {
     enum DownloadType: String, CaseIterable, Identifiable {
+        case both  = "Video + Audio"
         case audio = "Audio Only"
         case video = "Video Only"
-        case both  = "Video + Audio"
         var id: String { rawValue }
     }
 
     @State private var videoURL: String = ""
     @State private var downloadStatus: String = "Idle"
 
-    // User selections
+    // Destination folder (default to Downloads)
+    @State private var destinationFolder: URL = {
+        FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first!
+    }()
+
+    // Download type
     @State private var downloadType: DownloadType = .both
-    private let resolutionOptions = ["1080","720","480","360","240"]
-    @State private var selectedResolution = "720"
+
+    // Video options
+    private let resolutionOptions = ["1080","720","480","360"]
+    @State private var selectedResolution = "1080"
+
+    private let videoFormatOptions = ["mp4","mkv", "mov", "webm"]
+    @State private var selectedVideoFormat = "mp4"
+
+    // 4) Audio options
     private let audioQualityOptions = ["320k","256k","192k","128k","64k"]
     @State private var selectedAudioQuality = "128k"
+
+    private let audioFormatOptions = ["mp3","m4a","opus"]
+    @State private var selectedAudioFormat = "mp3"
 
     var body: some View {
         VStack(spacing: 20) {
@@ -31,26 +47,46 @@ struct ContentView: View {
                 .font(.title)
                 .padding(.top)
 
+            // URL input
             TextField("Enter YouTube URL", text: $videoURL)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
                 .padding(.horizontal)
 
-            // 1) Download type picker
+            // Destination selector
+            HStack {
+                Text("Save to:")
+                Text(destinationFolder.path)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer()
+                Button("Change…", action: selectFolder)
+            }
+            .padding(.horizontal)
+
+            // Download type
             Picker("Type", selection: $downloadType) {
-                ForEach(DownloadType.allCases) { type in
-                    Text(type.rawValue).tag(type)
+                ForEach(DownloadType.allCases) { t in
+                    Text(t.rawValue).tag(t)
                 }
             }
             .pickerStyle(SegmentedPickerStyle())
             .padding(.horizontal)
 
-            // 2) Resolution (only when video or both)
+            // Video settings
             if downloadType != .audio {
                 HStack {
                     Text("Resolution:")
                     Picker("", selection: $selectedResolution) {
-                        ForEach(resolutionOptions, id: \.self) { r in
-                            Text("\(r)p").tag(r)
+                        ForEach(resolutionOptions, id: \.self) {
+                            Text("\($0)p")
+                        }
+                    }
+                    .pickerStyle(MenuPickerStyle())
+                    
+                    Text("Container:")
+                    Picker("", selection: $selectedVideoFormat) {
+                        ForEach(videoFormatOptions, id: \.self) {
+                            Text($0)
                         }
                     }
                     .pickerStyle(MenuPickerStyle())
@@ -58,13 +94,21 @@ struct ContentView: View {
                 .padding(.horizontal)
             }
 
-            // 3) Audio quality (only when audio or both)
+            // Audio settings
             if downloadType != .video {
                 HStack {
-                    Text("Audio Quality:")
+                    Text("Quality:")
                     Picker("", selection: $selectedAudioQuality) {
-                        ForEach(audioQualityOptions, id: \.self) { q in
-                            Text(q).tag(q)
+                        ForEach(audioQualityOptions, id: \.self) {
+                            Text($0)
+                        }
+                    }
+                    .pickerStyle(MenuPickerStyle())
+
+                    Text("Format:")
+                    Picker("", selection: $selectedAudioFormat) {
+                        ForEach(audioFormatOptions, id: \.self) {
+                            Text($0)
                         }
                     }
                     .pickerStyle(MenuPickerStyle())
@@ -72,104 +116,117 @@ struct ContentView: View {
                 .padding(.horizontal)
             }
 
+            // Download button
             Button("Download") {
-                downloadYouTube(
-                    url: videoURL,
-                    type: downloadType,
-                    resolution: selectedResolution,
-                    audioQuality: selectedAudioQuality
-                )
+                startDownload()
             }
             .disabled(videoURL.isEmpty)
             .padding()
 
+            // Status
             Text(downloadStatus)
                 .foregroundColor(.gray)
                 .padding()
 
             Spacer()
         }
-        .frame(width: 400, height: 400)
+        .frame(width: 500, height: 480)
         .padding()
     }
 
-    func downloadYouTube(
-        url: String,
-        type: DownloadType,
-        resolution: String,
-        audioQuality: String
-    ) {
-        downloadStatus = "Starting download..."
-        let desktop = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Desktop")
-        guard FileManager.default.fileExists(atPath: desktop.path) else {
-            downloadStatus = "Desktop folder not found."
+    /// Opens an NSOpenPanel to pick a folder
+    private func selectFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.begin { response in
+            if response == .OK, let url = panel.url {
+                destinationFolder = url
+            }
+        }
+    }
+
+    private func startDownload() {
+        downloadStatus = "Starting download…"
+
+        // ensure folder exists
+        guard FileManager.default.fileExists(atPath: destinationFolder.path) else {
+            downloadStatus = "Destination folder not found."
             return
         }
 
-        // Build yt-dlp format string
+        // build format flags
         let formatOpt: String
-        switch type {
+        switch downloadType {
         case .audio:
-            // bestaudio, extract to mp3, set quality
-            formatOpt =
-            #" -f bestaudio --extract-audio --audio-format mp3 --audio-quality "# + audioQuality
+            formatOpt = #"""
+             -f bestaudio --extract-audio \
+             --audio-format \#(selectedAudioFormat) \
+             --audio-quality \#(selectedAudioQuality)
+            """#
         case .video:
-            // bestvideo up to chosen height, no audio
-            formatOpt =
-            #" -f "bestvideo[height<=\#(resolution)]" --merge-output-format mp4 --no-audio "#
+            formatOpt = #"""
+             -f "bestvideo[height<=\#(selectedResolution)]" \
+             --merge-output-format \#(selectedVideoFormat) \
+             --no-audio
+            """#
         case .both:
-            // separate bestvideo + bestaudio, then merge to mp4
-            formatOpt =
-            #" -f "bestvideo[height<=\#(resolution)]+bestaudio" --merge-output-format mp4 "#
+            formatOpt = #"""
+             -f "bestvideo[height<=\#(selectedResolution)]+bestaudio" \
+             --merge-output-format \#(selectedVideoFormat)
+            """#
         }
 
-        let safeURL = url.escaped()
-        let safePath = desktop.path.escaped()
-        let ytDlp = "/opt/homebrew/bin/yt-dlp"
-        let ffmpegLocation = "/opt/homebrew/bin/ffmpeg"
-        let ffmpegOpt = " --ffmpeg-location \(ffmpegLocation)"
+        // escape paths & URL
+        let safeURL  = videoURL.escaped()
+        let safePath = destinationFolder.path.escaped()
+        let ytDlp    = "/opt/homebrew/bin/yt-dlp"
 
+        // construct shell command
         let cmd = #"""
           cd \#(safePath) &&
-          \#(ytDlp)\#(formatOpt)\#(ffmpegOpt) "\#(safeURL)"
+          \#(ytDlp)\#(formatOpt) "\#(safeURL)"
         """#
 
-        print("Running command:", cmd)
+        // launch process
         let proc = Process()
-        proc.launchPath = "/bin/zsh"
-        proc.arguments = ["-c", cmd]
+        proc.launchPath  = "/bin/zsh"
+        proc.arguments  = ["-c", cmd]
+
+        // ensure ffmpeg is on PATH
+        var env = ProcessInfo.processInfo.environment
+        env["PATH"] = "/opt/homebrew/bin:" + (env["PATH"] ?? "")
+        proc.environment = env
 
         let pipe = Pipe()
         proc.standardOutput = pipe
         proc.standardError  = pipe
 
+        // read live output
         pipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
-            if let out = String(data: data, encoding: .utf8), !out.isEmpty {
+            if let out = String(data: data, encoding: .utf8),
+               !out.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 DispatchQueue.main.async {
-                    self.downloadStatus = out.trimmingCharacters(in: .whitespacesAndNewlines)
+                    downloadStatus = out.trimmingCharacters(in: .whitespacesAndNewlines)
                 }
-                print("> ", out)
             }
         }
 
+        // completion handler
         proc.terminationHandler = { p in
             DispatchQueue.main.async {
-                if p.terminationStatus == 0 {
-                    self.downloadStatus = "Download completed. Check Desktop."
-                } else {
-                    self.downloadStatus = "Download failed (code \(p.terminationStatus))."
-                }
+                downloadStatus = (p.terminationStatus == 0)
+                    ? "Download completed. Check \(destinationFolder.lastPathComponent)."
+                    : "Download failed (code \(p.terminationStatus))."
             }
-            print("Process exited:", p.terminationStatus)
         }
 
         do {
             try proc.run()
-            print("Process launched.")
         } catch {
-            downloadStatus = "Failed to start yt-dlp: \(error.localizedDescription)"
+            downloadStatus = "Error launching yt-dlp: \(error.localizedDescription)"
         }
     }
 }
