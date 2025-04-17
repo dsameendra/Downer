@@ -6,7 +6,7 @@
 //
 
 import SwiftUI
-import AppKit   // for NSOpenPanel
+import AppKit // for NSOpenPanel
 
 struct ContentView: View {
     enum DownloadType: String, CaseIterable, Identifiable {
@@ -18,8 +18,9 @@ struct ContentView: View {
 
     @State private var videoURL: String = ""
     @State private var downloadStatus: String = "Idle"
+    @State private var isDownloading = false
 
-    // Destination folder (default to Downloads)
+    // Destination folder
     @State private var destinationFolder: URL = {
         FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first!
     }()
@@ -28,113 +29,162 @@ struct ContentView: View {
     @State private var downloadType: DownloadType = .both
 
     // Video options
-    private let resolutionOptions = ["1080","720","480","360"]
+    private let resolutionOptions = ["4320", "2160", "1080","720","480","360","240"]
     @State private var selectedResolution = "1080"
-
-    private let videoFormatOptions = ["mp4","mkv", "mov", "webm"]
+    private let videoFormatOptions = ["mp4","mkv","webm"]
     @State private var selectedVideoFormat = "mp4"
 
-    // 4) Audio options
+    // Audio options
     private let audioQualityOptions = ["320k","256k","192k","128k","64k"]
-    @State private var selectedAudioQuality = "128k"
-
+    @State private var selectedAudioQuality = "320k"
     private let audioFormatOptions = ["mp3","m4a","opus"]
     @State private var selectedAudioFormat = "mp3"
 
     var body: some View {
-        VStack(spacing: 20) {
-            Text("Downer")
-                .font(.title)
-                .padding(.top)
+        ZStack {
+            VStack(spacing: 24) {
 
-            // URL input
-            TextField("Enter YouTube URL", text: $videoURL)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
+                // URL input
+                TextField("Enter YouTube URL", text: $videoURL)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .padding(.horizontal)
+                    .disableAutocorrection(true)
+
+                // Destination folder
+                HStack {
+                    Image(systemName: "folder.fill")
+                        .foregroundColor(.white)
+                    Text(destinationFolder.lastPathComponent)
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer()
+                    Button(action: selectFolder) {
+                        Text("Change…")
+                            .font(.callout)
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 12)
+                            .background(Color.white.opacity(0.2))
+                            .cornerRadius(8)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
                 .padding(.horizontal)
 
-            // Destination selector
-            HStack {
-                Text("Save to:")
-                Text(destinationFolder.path)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                // Download type
+                Picker("Type", selection: $downloadType) {
+                    ForEach(DownloadType.allCases) { t in
+                        Text(t.rawValue).tag(t)
+                    }
+                }
+                .pickerStyle(SegmentedPickerStyle())
+                .padding(.horizontal)
+                .accentColor(.white)
+                .animation(.easeInOut, value: downloadType)
+
+                // Video settings
+                if downloadType != .audio {
+                    VStack(spacing: 12) {
+                        HStack {
+                            Text("Resolution:")
+                                .foregroundColor(.white)
+                            Picker("", selection: $selectedResolution) {
+                                ForEach(resolutionOptions, id: \.self) {
+                                    Text("\($0)p")
+                                }
+                            }
+                            .pickerStyle(MenuPickerStyle())
+                            .frame(width: 80)
+                        }
+                        .padding(.horizontal)
+
+                        HStack {
+                            Text("Container:")
+                                .foregroundColor(.white)
+                            Picker("", selection: $selectedVideoFormat) {
+                                ForEach(videoFormatOptions, id: \.self) {
+                                    Text($0.uppercased())
+                                }
+                            }
+                            .pickerStyle(MenuPickerStyle())
+                            .frame(width: 100)
+                        }
+                        .padding(.horizontal)
+                    }
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
+                // Audio settings
+                if downloadType != .video {
+                    VStack(spacing: 12) {
+                        HStack {
+                            Text("Quality:")
+                                .foregroundColor(.white)
+                            Picker("", selection: $selectedAudioQuality) {
+                                ForEach(audioQualityOptions, id: \.self) {
+                                    Text($0)
+                                }
+                            }
+                            .pickerStyle(MenuPickerStyle())
+                            .frame(width: 80)
+                        }
+                        .padding(.horizontal)
+
+                        HStack {
+                            Text("Format:")
+                                .foregroundColor(.white)
+                            Picker("", selection: $selectedAudioFormat) {
+                                ForEach(audioFormatOptions, id: \.self) {
+                                    Text($0.uppercased())
+                                }
+                            }
+                            .pickerStyle(MenuPickerStyle())
+                            .frame(width: 100)
+                        }
+                        .padding(.horizontal)
+                    }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+
+                // Download button & progress
+                ZStack {
+                    Button(action: startDownload) {
+                        Text(isDownloading ? "Downloading..." : "Download")
+                            .font(.headline)
+                            .foregroundColor(.red)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.white)
+                            .cornerRadius(12)
+                            .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+                            .scaleEffect(isDownloading ? 0.95 : 1.0)
+                    }
+                    .disabled(videoURL.isEmpty || isDownloading)
+                    .padding(.horizontal)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isDownloading)
+
+                    if isDownloading {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    }
+                }
+
+                // Status text
+                Text(downloadStatus)
+                    .foregroundColor(.white.opacity(0.9))
+                    .font(.subheadline)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                    .transition(.opacity)
+                    .animation(.easeIn, value: downloadStatus)
+
                 Spacer()
-                Button("Change…", action: selectFolder)
             }
-            .padding(.horizontal)
-
-            // Download type
-            Picker("Type", selection: $downloadType) {
-                ForEach(DownloadType.allCases) { t in
-                    Text(t.rawValue).tag(t)
-                }
-            }
-            .pickerStyle(SegmentedPickerStyle())
-            .padding(.horizontal)
-
-            // Video settings
-            if downloadType != .audio {
-                HStack {
-                    Text("Resolution:")
-                    Picker("", selection: $selectedResolution) {
-                        ForEach(resolutionOptions, id: \.self) {
-                            Text("\($0)p")
-                        }
-                    }
-                    .pickerStyle(MenuPickerStyle())
-                    
-                    Text("Container:")
-                    Picker("", selection: $selectedVideoFormat) {
-                        ForEach(videoFormatOptions, id: \.self) {
-                            Text($0)
-                        }
-                    }
-                    .pickerStyle(MenuPickerStyle())
-                }
-                .padding(.horizontal)
-            }
-
-            // Audio settings
-            if downloadType != .video {
-                HStack {
-                    Text("Quality:")
-                    Picker("", selection: $selectedAudioQuality) {
-                        ForEach(audioQualityOptions, id: \.self) {
-                            Text($0)
-                        }
-                    }
-                    .pickerStyle(MenuPickerStyle())
-
-                    Text("Format:")
-                    Picker("", selection: $selectedAudioFormat) {
-                        ForEach(audioFormatOptions, id: \.self) {
-                            Text($0)
-                        }
-                    }
-                    .pickerStyle(MenuPickerStyle())
-                }
-                .padding(.horizontal)
-            }
-
-            // Download button
-            Button("Download") {
-                startDownload()
-            }
-            .disabled(videoURL.isEmpty)
-            .padding()
-
-            // Status
-            Text(downloadStatus)
-                .foregroundColor(.gray)
-                .padding()
-
-            Spacer()
+            .padding(.top, 30)
         }
-        .frame(width: 500, height: 480)
-        .padding()
     }
 
-    /// Opens an NSOpenPanel to pick a folder
+    // MARK: - Folder Picker
     private func selectFolder() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -147,12 +197,15 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Start Download
     private func startDownload() {
+        withAnimation { isDownloading = true }
         downloadStatus = "Starting download…"
 
         // ensure folder exists
         guard FileManager.default.fileExists(atPath: destinationFolder.path) else {
             downloadStatus = "Destination folder not found."
+            withAnimation { isDownloading = false }
             return
         }
 
@@ -178,23 +231,17 @@ struct ContentView: View {
             """#
         }
 
-        // escape paths & URL
         let safeURL  = videoURL.escaped()
         let safePath = destinationFolder.path.escaped()
         let ytDlp    = "/opt/homebrew/bin/yt-dlp"
-
-        // construct shell command
         let cmd = #"""
           cd \#(safePath) &&
           \#(ytDlp)\#(formatOpt) "\#(safeURL)"
         """#
 
-        // launch process
         let proc = Process()
-        proc.launchPath  = "/bin/zsh"
+        proc.launchPath = "/bin/zsh"
         proc.arguments  = ["-c", cmd]
-
-        // ensure ffmpeg is on PATH
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = "/opt/homebrew/bin:" + (env["PATH"] ?? "")
         proc.environment = env
@@ -203,23 +250,24 @@ struct ContentView: View {
         proc.standardOutput = pipe
         proc.standardError  = pipe
 
-        // read live output
         pipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
             if let out = String(data: data, encoding: .utf8),
                !out.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 DispatchQueue.main.async {
-                    downloadStatus = out.trimmingCharacters(in: .whitespacesAndNewlines)
+                    withAnimation { downloadStatus = out.trimmingCharacters(in: .whitespacesAndNewlines) }
                 }
             }
         }
 
-        // completion handler
         proc.terminationHandler = { p in
             DispatchQueue.main.async {
-                downloadStatus = (p.terminationStatus == 0)
-                    ? "Download completed. Check \(destinationFolder.lastPathComponent)."
-                    : "Download failed (code \(p.terminationStatus))."
+                withAnimation {
+                    isDownloading = false
+                    downloadStatus = (p.terminationStatus == 0)
+                        ? "Download completed. Check \(destinationFolder.lastPathComponent)."
+                        : "Download failed (code \(p.terminationStatus))."
+                }
             }
         }
 
@@ -227,6 +275,7 @@ struct ContentView: View {
             try proc.run()
         } catch {
             downloadStatus = "Error launching yt-dlp: \(error.localizedDescription)"
+            withAnimation { isDownloading = false }
         }
     }
 }
