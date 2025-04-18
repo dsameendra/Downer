@@ -51,7 +51,7 @@ struct MainAppView: View {
         "4320", "2160", "1080", "720", "480", "360", "240",
     ]
     private let videoFormatOptions = ["mp4", "mkv", "webm"]
-    private let audioQualityOptions = ["320k", "256k", "192k", "128k", "64k"]
+    private let audioQualityOptions = ["256k", "192k", "128k", "64k"]
     private let audioFormatOptions = ["mp3", "m4a", "opus"]
 
     var body: some View {
@@ -179,7 +179,7 @@ struct MainAppView: View {
                                 .frame(height: 15)
                                 .frame(alignment: .center)
                         } else {
-                            Image(systemName: "progress.indicator")
+                            Image(systemName: "chevron.down")
                                 .foregroundColor(.secondary)
                                 .opacity(0.8)
                                 .font(.system(size: 15, weight: .medium))
