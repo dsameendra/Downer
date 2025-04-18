@@ -46,19 +46,11 @@ All preferences are remembered across launches.
 	3.	From the Team dropdown choose your Apple‑ID team (or add one).
 Automatic signing is sufficient for local builds—Xcode will generate a
 debug profile and sign the bundle.
-4. Make sure command‑line dependencies are installed.
-   (skip if you already have them)
-  ```
-  # Apple Silicon
-  /opt/homebrew/bin/brew install yt-dlp ffmpeg
-  
-  # Intel
-  /usr/local/bin/brew install yt-dlp ffmpeg
-  ```
+4. Make sure command‑line dependencies are installed (skip if you already have them).
 5. Build and run.
 6. First‑run setup
 	1.	Go to Settings → Tool Paths.
-	2.  Verify the paths to yt-dlp, ffmpeg, and ffprobe (Homebrew defaults are auto‑detected).
+	2.  Verify the paths to yt-dlp, ffmpeg, and ffprobe (Homebrew defaults should be auto‑detected).
 	3.  Choose a global shortcut if you like.
 
 ---
