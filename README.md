@@ -10,6 +10,25 @@
 - Settings are **persisted** and shared between the main app and the menubar popover
 - Minimal and clean **native macOS UI** with red-accent styling and dark mode support
 
+<table align="center" style="border: none; border-collapse: collapse;">
+  <thead>
+    <tr>
+      <th align="center" style="padding: 8px; border: none;">App</th>
+      <th align="center" style="padding: 8px; border: none;">Menubar Popover</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td align="center" valign="top" style="border: none;">
+        <img src="https://imgur.com/EUiejdu.png" alt="Downer App Screenshot" width="400"/>
+      </td>
+      <td align="center" valign="top" style="border: none;">
+        <img src="https://imgur.com/Q2snmAY.png" alt="Downer Menubar Screenshot" width="400"/>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
 ## 🚀 Usage
 
 1. Launch **Downer.app**  
