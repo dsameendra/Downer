@@ -12,8 +12,8 @@ struct DownerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     var body: some Scene {
         Settings {
-            SettingsView().tint(.red)       
+            SettingsView().tint(.red)
         }
-           
+
     }
 }

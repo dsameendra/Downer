@@ -5,47 +5,60 @@
 //  Created by Dumindu Sameendra on 2025-04-17.
 //
 
-
-import SwiftUI
 import AppKit
+import SwiftUI
 
 struct MainDownloadView: View {
-    // Persisted settings
-    @AppStorage("downloadType")        private var downloadTypeRaw        = DownloadType.both.rawValue
-    @AppStorage("selectedResolution")  private var selectedResolution      = "1080"
-    @AppStorage("selectedVideoFormat") private var selectedVideoFormat     = "mp4"
-    @AppStorage("selectedAudioQuality")private var selectedAudioQuality    = "320k"
-    @AppStorage("selectedAudioFormat") private var selectedAudioFormat     = "mp3"
-    @AppStorage("destinationFolder") private var destinationFolderPath = FileManager
+    // user‑configurable tool paths
+    @AppStorage("ytDlpPath") private var ytDlpPath: String =
+        "/opt/homebrew/bin/yt-dlp"
+    @AppStorage("ffmpegPath") private var ffmpegPath: String =
+        "/opt/homebrew/bin/ffmpeg"
+    @AppStorage("ffprobePath") private var ffprobePath: String =
+        "/opt/homebrew/bin/ffprobe"
+
+    @AppStorage("downloadType") private var downloadTypeRaw = DownloadType.both
+        .rawValue
+    @AppStorage("selectedResolution") private var selectedResolution = "1080"
+    @AppStorage("selectedVideoFormat") private var selectedVideoFormat = "mp4"
+    @AppStorage("selectedAudioQuality") private var selectedAudioQuality =
+        "320k"
+    @AppStorage("selectedAudioFormat") private var selectedAudioFormat = "mp3"
+    @AppStorage("destinationFolder") private var destinationFolderPath =
+        FileManager
         .default
         .urls(for: .downloadsDirectory, in: .userDomainMask)
         .first!
         .path
-    
+
     // Transient UI state
-    @State private var videoURL      = ""
+    @State private var videoURL = ""
     @State private var downloadStatus = "Idle"
-    @State private var isDownloading  = false
+    @State private var isDownloading = false
     @State private var currentProcess: Process?
 
     // Bindings & helpers
-    
+
     private var downloadType: Binding<DownloadType> {
         Binding(
             get: { DownloadType(rawValue: downloadTypeRaw) ?? .both },
             set: { downloadTypeRaw = $0.rawValue }
         )
     }
-    private var destinationFolder: URL { URL(fileURLWithPath: destinationFolderPath) }
+    private var destinationFolder: URL {
+        URL(fileURLWithPath: destinationFolderPath)
+    }
 
     // MARK: – constants
-    private let resolutionOptions   = ["4320","2160","1080","720","480","360","240"]
-    private let videoFormatOptions  = ["mp4","mkv","webm"]
-    private let audioQualityOptions = ["320k","256k","192k","128k","64k"]
-    private let audioFormatOptions  = ["mp3","m4a","opus"]
+    private let resolutionOptions = [
+        "4320", "2160", "1080", "720", "480", "360", "240",
+    ]
+    private let videoFormatOptions = ["mp4", "mkv", "webm"]
+    private let audioQualityOptions = ["320k", "256k", "192k", "128k", "64k"]
+    private let audioFormatOptions = ["mp3", "m4a", "opus"]
 
     var body: some View {
-        ScrollView {                    // smoother resize & avoids clipped pop‑over
+        ScrollView {  // smoother resize & avoids clipped pop‑over
             VStack(alignment: .center, spacing: 24) {
 
                 // URL
@@ -54,9 +67,15 @@ struct MainDownloadView: View {
 
                 DisclosureGroup {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("• **Your choices are remembered** – every setting you chose here will be your new defaults and will be used in the menubar pop-over app as well.")
-                        Text("• **Download / Cancel** – start a job with one click and stop it at any time with the Cancel button.")
-                        Text("• **Hide & show** – closing this window hides it (and the Dock icon). Click the menu‑bar icon to bring it back.")
+                        Text(
+                            "• **Your choices are remembered** – every setting you chose here will be your new defaults and will be used in the menubar pop-over app as well."
+                        )
+                        Text(
+                            "• **Download / Cancel** – start a job with one click and stop it at any time with the Cancel button."
+                        )
+                        Text(
+                            "• **Hide & show** – closing this window hides it (and the Dock icon). Click the menu‑bar icon to bring it back."
+                        )
                     }
                     .font(.callout)
                     .padding(.top, 2)
@@ -67,9 +86,12 @@ struct MainDownloadView: View {
 
                 // Destination
                 HStack {
-                    Label(destinationFolder.lastPathComponent, systemImage: "folder")
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                    Label(
+                        destinationFolder.lastPathComponent,
+                        systemImage: "folder"
+                    )
+                    .lineLimit(1)
+                    .truncationMode(.middle)
                     Spacer()
                     Button("Change…", action: selectFolder)
                 }
@@ -86,14 +108,18 @@ struct MainDownloadView: View {
                         GridRow {
                             Text("Resolution")
                             Picker("", selection: $selectedResolution) {
-                                ForEach(resolutionOptions, id: \.self) { Text("\($0)p") }
+                                ForEach(resolutionOptions, id: \.self) {
+                                    Text("\($0)p")
+                                }
                             }
                             .pickerStyle(.menu)
                         }
                         GridRow {
                             Text("Container")
                             Picker("", selection: $selectedVideoFormat) {
-                                ForEach(videoFormatOptions, id: \.self) { Text($0.uppercased()) }
+                                ForEach(videoFormatOptions, id: \.self) {
+                                    Text($0.uppercased())
+                                }
                             }
                             .pickerStyle(.menu)
                         }
@@ -107,14 +133,18 @@ struct MainDownloadView: View {
                         GridRow {
                             Text("Quality")
                             Picker("", selection: $selectedAudioQuality) {
-                                ForEach(audioQualityOptions, id: \.self) { Text($0) }
+                                ForEach(audioQualityOptions, id: \.self) {
+                                    Text($0)
+                                }
                             }
                             .pickerStyle(.menu)
                         }
                         GridRow {
                             Text("Format")
                             Picker("", selection: $selectedAudioFormat) {
-                                ForEach(audioFormatOptions, id: \.self) { Text($0.uppercased()) }
+                                ForEach(audioFormatOptions, id: \.self) {
+                                    Text($0.uppercased())
+                                }
                             }
                             .pickerStyle(.menu)
                         }
@@ -145,7 +175,7 @@ struct MainDownloadView: View {
             .animation(.easeInOut, value: downloadType.wrappedValue)
         }
         .frame(width: 420, height: 540)
-        .tint(.red)                     // accent colour for this window
+        .tint(.red)  // accent colour for this window
     }
 
     // MARK: Actions
@@ -171,8 +201,24 @@ struct MainDownloadView: View {
     private func startDownload() {
         withAnimation { isDownloading = true }
         downloadStatus = "Starting download…"
-        guard FileManager.default.fileExists(atPath: destinationFolder.path) else {
+
+        // validate all paths first
+        guard FileManager.default.fileExists(atPath: destinationFolder.path)
+        else {
             downloadStatus = "Destination folder not found."
+            isDownloading = false
+            return
+        }
+        guard FileManager.default.isExecutableFile(atPath: ytDlpPath) else {
+            downloadStatus = "yt‑dlp not found.\nCheck Settings → Tool Paths."
+            isDownloading = false
+            return
+        }
+        guard FileManager.default.isExecutableFile(atPath: ffmpegPath),
+            FileManager.default.isExecutableFile(atPath: ffprobePath)
+        else {
+            downloadStatus =
+                "ffmpeg / ffprobe not found.\nCheck Settings → Tool Paths."
             isDownloading = false
             return
         }
@@ -181,46 +227,62 @@ struct MainDownloadView: View {
         switch downloadType.wrappedValue {
         case .audio:
             formatOpt = #"""
-             -f bestaudio --extract-audio \
-             --audio-format \#(selectedAudioFormat) \
-             --audio-quality \#(selectedAudioQuality)
-            """#
+                 -f bestaudio --extract-audio \
+                 --audio-format \#(selectedAudioFormat) \
+                 --audio-quality \#(selectedAudioQuality)
+                """#
         case .video:
             formatOpt = #"""
-             -f "bestvideo[height<=\#(selectedResolution)]" \
-             --merge-output-format \#(selectedVideoFormat) \
-             --no-audio
-            """#
+                 -f "bestvideo[height<=\#(selectedResolution)]" \
+                 --merge-output-format \#(selectedVideoFormat) \
+                 --no-audio
+                """#
         case .both:
             formatOpt = #"""
-             -f "bestvideo[height<=\#(selectedResolution)]+bestaudio" \
-             --merge-output-format \#(selectedVideoFormat)
-            """#
+                 -f "bestvideo[height<=\#(selectedResolution)]+bestaudio" \
+                 --merge-output-format \#(selectedVideoFormat)
+                """#
         }
 
-        let path = destinationFolder.path.escaped()
-        let cmd  = "cd \(path) && /opt/homebrew/bin/yt-dlp \(formatOpt) \"\(videoURL.escaped())\""
+        //        let path = destinationFolder.path.escaped()
+        //        let cmd  = "cd \(path) && /opt/homebrew/bin/yt-dlp \(formatOpt) \"\(videoURL.escaped())\""
+        let workDir = destinationFolder.path.escaped()
+        let ytCommand =
+            "\"\(ytDlpPath.escaped())\" \(formatOpt) \"\(videoURL.escaped())\""
+        let cmd = "cd \(workDir) && \(ytCommand)"
 
         let proc = Process()
         proc.launchPath = "/bin/zsh"
-        proc.arguments  = ["-c", cmd]
+        proc.arguments = ["-c", cmd]
+
         var env = ProcessInfo.processInfo.environment
-        env["PATH"] = "/opt/homebrew/bin:" + (env["PATH"] ?? "")
+        //        env["PATH"] = "/opt/homebrew/bin:" + (env["PATH"] ?? "")
+        let ffmpegDir = (ffmpegPath as NSString).deletingLastPathComponent  // <-- directory that contains ffmpeg
+        env["PATH"] = "\(ffmpegDir):" + (env["PATH"] ?? "")
+        env["FFMPEG"] = ffmpegPath
+        env["FFPROBE"] = ffprobePath
         proc.environment = env
 
         let pipe = Pipe()
-        proc.standardOutput = pipe; proc.standardError = pipe
+        proc.standardOutput = pipe
+        proc.standardError = pipe
         pipe.fileHandleForReading.readabilityHandler = { h in
             let d = h.availableData
-            if let s = String(data:d, encoding:.utf8),
-               !s.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty {
-                DispatchQueue.main.async { downloadStatus = s.trimmingCharacters(in:.whitespacesAndNewlines) }
+            if let s = String(data: d, encoding: .utf8),
+                !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            {
+                DispatchQueue.main.async {
+                    downloadStatus = s.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    )
+                }
             }
         }
         proc.terminationHandler = { p in
             DispatchQueue.main.async {
                 isDownloading = false
-                downloadStatus = p.terminationStatus == 0
+                downloadStatus =
+                    p.terminationStatus == 0
                     ? "Download completed."
                     : "Download failed (code \(p.terminationStatus))."
             }
