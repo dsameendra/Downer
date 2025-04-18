@@ -8,7 +8,7 @@
 import AppKit
 import SwiftUI
 
-struct MainDownloadView: View {
+struct MainAppView: View {
     // user‑configurable tool paths
     @AppStorage("ytDlpPath") private var ytDlpPath: String =
         "/opt/homebrew/bin/yt-dlp"
@@ -31,13 +31,10 @@ struct MainDownloadView: View {
         .first!
         .path
 
-    // Transient UI state
     @State private var videoURL = ""
     @State private var downloadStatus = "Idle"
     @State private var isDownloading = false
     @State private var currentProcess: Process?
-
-    // Bindings & helpers
 
     private var downloadType: Binding<DownloadType> {
         Binding(
@@ -58,7 +55,7 @@ struct MainDownloadView: View {
     private let audioFormatOptions = ["mp3", "m4a", "opus"]
 
     var body: some View {
-        ScrollView {  // smoother resize & avoids clipped pop‑over
+        ScrollView {
             VStack(alignment: .center, spacing: 24) {
 
                 // URL
@@ -71,7 +68,7 @@ struct MainDownloadView: View {
                             "• **Your choices are remembered** – every setting you chose here will be your new defaults and will be used in the menubar pop-over app as well."
                         )
                         Text(
-                            "• **Download / Cancel** – start a job with one click and stop it at any time with the Cancel button."
+                            "• **Download / Cancel** – start downloading with one click and stop it at any time with the Cancel button."
                         )
                         Text(
                             "• **Hide & show** – closing this window hides it (and the Dock icon). Click the menu‑bar icon to bring it back."
@@ -84,7 +81,7 @@ struct MainDownloadView: View {
                 }
                 .padding(.top, 12)
 
-                // Destination
+                // destination
                 HStack {
                     Label(
                         destinationFolder.lastPathComponent,
@@ -96,13 +93,13 @@ struct MainDownloadView: View {
                     Button("Change…", action: selectFolder)
                 }
 
-                // Type selector
+                // type selector
                 Picker("Download Type", selection: downloadType) {
                     ForEach(DownloadType.allCases) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
 
-                // Video options
+                // video options
                 if downloadType.wrappedValue != .audio {
                     Grid(horizontalSpacing: 16, verticalSpacing: 12) {
                         GridRow {
@@ -127,7 +124,7 @@ struct MainDownloadView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
 
-                // Audio options
+                // audio options
                 if downloadType.wrappedValue != .video {
                     Grid(horizontalSpacing: 16, verticalSpacing: 12) {
                         GridRow {
@@ -152,7 +149,7 @@ struct MainDownloadView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
 
-                // Download / cancel button
+                // download / cancel button
                 Button {
                     isDownloading ? stopDownload() : startDownload()
                 } label: {
@@ -165,7 +162,6 @@ struct MainDownloadView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(videoURL.isEmpty && !isDownloading)
 
-                // Spinner + status
                 if isDownloading { ProgressView() }
                 Text(downloadStatus).font(.subheadline)
 
@@ -244,8 +240,6 @@ struct MainDownloadView: View {
                 """#
         }
 
-        //        let path = destinationFolder.path.escaped()
-        //        let cmd  = "cd \(path) && /opt/homebrew/bin/yt-dlp \(formatOpt) \"\(videoURL.escaped())\""
         let workDir = destinationFolder.path.escaped()
         let ytCommand =
             "\"\(ytDlpPath.escaped())\" \(formatOpt) \"\(videoURL.escaped())\""
@@ -256,8 +250,7 @@ struct MainDownloadView: View {
         proc.arguments = ["-c", cmd]
 
         var env = ProcessInfo.processInfo.environment
-        //        env["PATH"] = "/opt/homebrew/bin:" + (env["PATH"] ?? "")
-        let ffmpegDir = (ffmpegPath as NSString).deletingLastPathComponent  // <-- directory that contains ffmpeg
+        let ffmpegDir = (ffmpegPath as NSString).deletingLastPathComponent
         env["PATH"] = "\(ffmpegDir):" + (env["PATH"] ?? "")
         env["FFMPEG"] = ffmpegPath
         env["FFPROBE"] = ffprobePath

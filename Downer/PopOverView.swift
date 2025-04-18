@@ -8,7 +8,7 @@
 import AppKit
 import SwiftUI
 
-struct MiniDownloadView: View {
+struct PopOverView: View {
     @AppStorage("downloadType") private var downloadTypeRaw = DownloadType.both
         .rawValue
     @AppStorage("selectedResolution") private var selectedResolution = "1080"

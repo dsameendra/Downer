@@ -8,7 +8,7 @@
 import Foundation
 
 extension String {
-    /// Escape quotes and spaces so we can safely embed this string in a shell command
+    /// Escape quotes and spaces to safely embed this string in a shell command
     func escaped() -> String {
         self
             .replacingOccurrences(of: "\"", with: "\\\"")

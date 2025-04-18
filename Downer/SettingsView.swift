@@ -37,13 +37,12 @@ struct SettingsView: View {
         .tint(.red)
     }
 
-    // MARK: – helpers
     @ViewBuilder
     private func pathRow(label: String, binding: Binding<String>) -> some View {
         HStack {
             Text(label).frame(width: 70, alignment: .leading)
             TextField("", text: binding)
-                .disabled(true)  // show the path but let “Browse…” set it
+                .disabled(true)
             Spacer()
             Button("Browse…") { choosePath(for: binding) }
         }

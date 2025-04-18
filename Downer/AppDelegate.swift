@@ -11,7 +11,7 @@ import SwiftUI
 
 class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
-    static private(set) var shared: AppDelegate!  // Singleton
+    static private(set) var shared: AppDelegate!  // singleton
 
     var mainWindow: NSWindow!
     var statusItem: NSStatusItem!
@@ -20,8 +20,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
 
-        // 1) Build your full‑app window and store it
-        let hostVC = NSHostingController(rootView: MainDownloadView())
+        let hostVC = NSHostingController(rootView: MainAppView())
         let w = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 400, height: 540),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -36,16 +35,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         w.isReleasedWhenClosed = false
         self.mainWindow = w
 
-        // show Dock icon
+        // show dock icon
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
 
-        // 3) Build the menu‑bar pop‑over
+        // build the menu‑bar pop‑over
         popover = NSPopover()
         popover.behavior = .transient
         popover.contentSize = NSSize(width: 360, height: 200)
         popover.contentViewController =
-            NSHostingController(rootView: MiniDownloadView())
+            NSHostingController(rootView: PopOverView())
 
         statusItem = NSStatusBar.system.statusItem(
             withLength: NSStatusItem.variableLength
@@ -61,42 +60,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             btn.target = self
         }
 
-        // 4) Register global shortcut
+        // register global shortcut
         KeyboardShortcuts.onKeyDown(for: .downloadShortcut) { [weak self] in
             self?.togglePopover(nil)
         }
     }
 
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
-        guard sender === mainWindow else { return true }
-
-        // 1) Hide the window rather than destroying it
-        sender.orderOut(nil)
-
-        // 2) Turn the app back into a menu‑bar extra
-        NSApp.setActivationPolicy(.accessory)
-
-        // 3) Don’t let Cocoa continue with the normal close behaviour
-        return false
-    }
-
-    // Click handler
-    @objc private func statusItemClicked(_ sender: Any?) {
-        guard let event = NSApp.currentEvent else { return }
-
-        if event.type == .rightMouseUp || event.modifierFlags.contains(.control)
-        {
-            // RIGHT click  → show menu
-            statusItem.menu = buildMenu()
-            statusItem.button?.performClick(nil)  // show menu now
-            statusItem.menu = nil  // detach afterwards to keep left‑click pop‑over working
-        } else {
-            // LEFT click   → toggle pop‑over
-            togglePopover(sender)
-        }
-    }
-
-    // Context menu builder
+    // context menu builder
     private func buildMenu() -> NSMenu {
         let menu = NSMenu()
 
@@ -118,15 +88,37 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             )
         )
 
-        // Make sure items send actions to us
         menu.items.forEach { $0.target = self }
         return menu
     }
+    
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard sender === mainWindow else { return true }
 
-    // Quit handler
-    @objc private func quitApp() {
-        NSApp.terminate(nil)
+        // hide the window rather than destroying it
+        sender.orderOut(nil)
+
+        // turn the app back into a menu‑bar
+        NSApp.setActivationPolicy(.accessory)
+
+        // disable normal close behaviour
+        return false
     }
+
+    // Click handler
+    @objc private func statusItemClicked(_ sender: Any?) {
+        guard let event = NSApp.currentEvent else { return }
+
+        if event.type == .rightMouseUp || event.modifierFlags.contains(.control)
+        {
+            statusItem.menu = buildMenu()
+            statusItem.button?.performClick(nil)
+            statusItem.menu = nil
+        } else {
+            togglePopover(sender)
+        }
+    }
+
 
     // MARK: Popover
     @objc func togglePopover(_ sender: Any?) {
@@ -143,10 +135,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
+    //
     @objc func openFullApp() {
-        // If, for some reason, the window vanished, recreate it
+        // if the window vanished recreate it again
         if mainWindow == nil {
-            let hostVC = NSHostingController(rootView: MainDownloadView())
+            let hostVC = NSHostingController(rootView: MainAppView())
             let w = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 400, height: 540),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -160,11 +153,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             mainWindow = w
         }
 
-        // Show Dock icon & app menu again
+        // reshow dock icon & app
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
 
-        // Bring the window to the front
+        // bring window to the front
         mainWindow!.makeKeyAndOrderFront(nil)
+    }
+    
+    // Quit handler
+    @objc private func quitApp() {
+        NSApp.terminate(nil)
     }
 }

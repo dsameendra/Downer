@@ -14,6 +14,5 @@ struct DownerApp: App {
         Settings {
             SettingsView().tint(.red)
         }
-
     }
 }
