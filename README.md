@@ -53,6 +53,14 @@ debug profile and sign the bundle.
 	2.  Verify the paths to yt-dlp, ffmpeg, and ffprobe (Homebrew defaults should be auto‑detected).
 	3.  Choose a global shortcut if you like.
 
+## 📦 Installing Locally
+If you're building the app yourself via Xcode, you can export and install it manually like this:
+1. In **Xcode**, go to `Product` → `Archive`
+2. Once the archive is complete, Xcode will open the **Organizer** window
+3. Click **Distribute App** → choose **Custom** → then **Copy App**
+4. Save the exported `.app` file to your desired location on disk
+5. Copy the `Downer.app` to your `/Applications` folder
+
 ---
 
 Built with ❤️ using [yt-dlp](https://github.com/yt-dlp/yt-dlp) and [ffmpeg](https://www.ffmpeg.org). Huge credit to the amazing developers behind these tools.
