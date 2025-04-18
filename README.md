@@ -54,3 +54,5 @@ debug profile and sign the bundle.
 	3.  Choose a global shortcut if you like.
 
 ---
+
+Built with ❤️ using [yt-dlp](https://github.com/yt-dlp/yt-dlp) and [ffmpeg](https://www.ffmpeg.org). Huge credit to the amazing developers behind these tools.
