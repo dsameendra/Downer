@@ -43,11 +43,14 @@ struct PopOverView: View {
     }
 
     var body: some View {
-        VStack(spacing: 16) {
-
-            TextField("YouTube URL", text: $videoURL)
+        VStack(spacing: 14) {
+            // URL Input
+            TextField("Paste YouTube URL", text: $videoURL)
                 .textFieldStyle(.roundedBorder)
+                .padding(.horizontal, 1)
+                .padding(.top, 10)
 
+            // Action button
             Button {
                 isDownloading ? stopDownload() : startDownload()
             } label: {
@@ -56,23 +59,49 @@ struct PopOverView: View {
                     systemImage: isDownloading
                         ? "xmark.circle" : "arrow.down.circle"
                 )
+                .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .disabled(videoURL.isEmpty && !isDownloading)
-            .animation(.easeInOut, value: isDownloading)
+            .animation(.easeInOut(duration: 0.2), value: isDownloading)
 
-            if isDownloading { ProgressView() }
+            ZStack {
+                if isDownloading {
+                    ProgressView()
+                        .scaleEffect(0.5)
+                        .transition(.opacity)
+                        .frame(height: 15)
+                        .frame(alignment: .center)
+                } else {
+                    Image(systemName: "progress.indicator")
+                        .foregroundColor(.secondary)
+                        .opacity(0.8)
+                        .font(.system(size: 15, weight: .medium))
+                        .frame(height: 15)
+                }
+            }
+            .animation(.easeInOut(duration: 0.25), value: isDownloading)
+
             Text(downloadStatus)
                 .font(.footnote)
+                .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
+                .frame(minHeight: 20)
+                .frame(maxHeight: 20)
 
             Divider()
 
-            Button("Open Full App") { AppDelegate.shared.openFullApp() }
+            // Toolbar button
+            HStack {
+                Button(action: AppDelegate.shared.openFullApp) {
+                    Label("Open App", systemImage: "square.and.arrow.up")
+                        .labelStyle(.titleAndIcon)
+                }
                 .buttonStyle(.bordered)
+            }
         }
-        .padding(24)
+        .padding(20)
         .frame(width: 320, height: 220)
         .tint(.red)
     }

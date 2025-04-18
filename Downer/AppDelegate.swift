@@ -54,6 +54,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 systemSymbolName: "arrow.down.circle.fill",
                 accessibilityDescription: "Downer"
             )
+//            btn.image = NSImage(named: NSImage.Name("AppIcon"))
+//            btn.image?.size = NSSize(width: 18, height: 18) // typical menubar size
 
             btn.sendAction(on: [.leftMouseUp, .rightMouseUp])
             btn.action = #selector(statusItemClicked(_:))

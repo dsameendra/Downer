@@ -61,25 +61,8 @@ struct MainAppView: View {
                 // URL
                 TextField("Enter YouTube URL", text: $videoURL)
                     .textFieldStyle(.roundedBorder)
-
-                DisclosureGroup {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(
-                            "• **Your choices are remembered** – every setting you chose here will be your new defaults and will be used in the menubar pop-over app as well."
-                        )
-                        Text(
-                            "• **Download / Cancel** – start downloading with one click and stop it at any time with the Cancel button."
-                        )
-                        Text(
-                            "• **Hide & show** – closing this window hides it (and the Dock icon). Click the menu‑bar icon to bring it back."
-                        )
-                    }
-                    .font(.callout)
-                    .padding(.top, 2)
-                } label: {
-                    Label("Quick tour", systemImage: "info.circle")
-                }
-                .padding(.top, 12)
+                
+                Divider()
 
                 // destination
                 HStack {
@@ -93,12 +76,16 @@ struct MainAppView: View {
                     Button("Change…", action: selectFolder)
                 }
 
+                Divider()
+                
                 // type selector
                 Picker("Download Type", selection: downloadType) {
                     ForEach(DownloadType.allCases) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
 
+                Divider()
+                
                 // video options
                 if downloadType.wrappedValue != .audio {
                     Grid(horizontalSpacing: 16, verticalSpacing: 12) {
@@ -148,29 +135,69 @@ struct MainAppView: View {
                     }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-
-                // download / cancel button
-                Button {
-                    isDownloading ? stopDownload() : startDownload()
-                } label: {
-                    if isDownloading {
-                        Label("Cancel Download", systemImage: "xmark.circle")
-                    } else {
-                        Label("Download", systemImage: "arrow.down.circle")
+                
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(
+                            "• **Your choices are remembered** – every setting you chose here will be your new defaults and will be used in the menubar pop-over app as well."
+                        )
+                        Text(
+                            "• **Download / Cancel** – start downloading with one click and stop it at any time with the Cancel button."
+                        )
+                        Text(
+                            "• **Hide & show** – closing this window hides it (and the Dock icon). Click the menu‑bar icon to bring it back."
+                        )
                     }
+                    .font(.callout)
+                    .padding(.top, 2)
+                } label: {
+                    Text("Information")
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(videoURL.isEmpty && !isDownloading)
-
-                if isDownloading { ProgressView() }
-                Text(downloadStatus).font(.subheadline)
-
-                Spacer(minLength: 0)
+                
+                Divider()
+                
+                VStack (alignment: .center, spacing: 24){
+                    
+                    // download / cancel button
+                    Button {
+                        isDownloading ? stopDownload() : startDownload()
+                    } label: {
+                        if isDownloading {
+                            Label("Cancel Download", systemImage: "xmark.circle")
+                        } else {
+                            Label("Download", systemImage: "arrow.down.circle")
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(videoURL.isEmpty && !isDownloading)
+                    
+                    ZStack {
+                        if isDownloading {
+                            ProgressView()
+                                .scaleEffect(0.5)
+                                .transition(.opacity)
+                                .frame(height: 15)
+                                .frame(alignment: .center)
+                        } else {
+                            Image(systemName: "progress.indicator")
+                                .foregroundColor(.secondary)
+                                .opacity(0.8)
+                                .font(.system(size: 15, weight: .medium))
+                                .frame(height: 15)
+                        }
+                    }
+                    .animation(.easeInOut(duration: 0.25), value: isDownloading)
+                    
+                    Text(downloadStatus).font(.subheadline)
+                    
+                    Spacer(minLength: 0)
+                }
             }
             .padding(32)
             .animation(.easeInOut, value: downloadType.wrappedValue)
+            
         }
-        .frame(width: 420, height: 540)
+        .frame(width: 450, height: 600)
         .tint(.red)  // accent colour for this window
     }
 
