@@ -9,9 +9,11 @@ import SwiftUI
 
 @main
 struct DownerApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     var body: some Scene {
-        WindowGroup {
-            ContentView()
+        Settings {
+            SettingsView().tint(.red)       
         }
+           
     }
 }

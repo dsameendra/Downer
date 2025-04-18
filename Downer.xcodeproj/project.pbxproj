@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		4529559B2DB17AB9000E4C76 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = 4529559A2DB17AB9000E4C76 /* KeyboardShortcuts */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		452955712DB0FF7E000E4C76 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -52,6 +56,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4529559B2DB17AB9000E4C76 /* KeyboardShortcuts in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +117,7 @@
 			);
 			name = Downer;
 			packageProductDependencies = (
+				4529559A2DB17AB9000E4C76 /* KeyboardShortcuts */,
 			);
 			productName = Downer;
 			productReference = 452955622DB0FF7D000E4C76 /* Downer.app */;
@@ -195,6 +201,9 @@
 			);
 			mainGroup = 452955592DB0FF7D000E4C76;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				452955992DB17AB9000E4C76 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 452955632DB0FF7D000E4C76 /* Products */;
 			projectDirPath = "";
@@ -551,6 +560,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		452955992DB17AB9000E4C76 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sindresorhus/KeyboardShortcuts.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.3.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		4529559A2DB17AB9000E4C76 /* KeyboardShortcuts */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 452955992DB17AB9000E4C76 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */;
+			productName = KeyboardShortcuts;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 4529555A2DB0FF7D000E4C76 /* Project object */;
 }
