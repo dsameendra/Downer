@@ -49,6 +49,11 @@ struct PopOverView: View {
                 .textFieldStyle(.roundedBorder)
                 .padding(.horizontal, 1)
                 .padding(.top, 10)
+                .onSubmit {
+                    if !isDownloading && !videoURL.isEmpty {
+                        startDownload()
+                    }
+                }
 
             // Action button
             Button {
@@ -82,13 +87,15 @@ struct PopOverView: View {
             }
             .animation(.easeInOut(duration: 0.25), value: isDownloading)
 
+            // Current status
             Text(downloadStatus)
                 .font(.footnote)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
+                .frame(minHeight: 24)
                 .frame(maxWidth: .infinity)
-                .frame(minHeight: 20)
-                .frame(maxHeight: 20)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(2)
 
             Divider()
 
@@ -162,9 +169,9 @@ struct PopOverView: View {
 
         case .video:
             formatOpt = """
-               -f "bestvideo[height<=\(selectedResolution)][acodec=none]" \
-               --remux-video \(selectedVideoFormat)
-               """
+                -f "bestvideo[height<=\(selectedResolution)][acodec=none]" \
+                --remux-video \(selectedVideoFormat)
+                """
 
         case .both:
             formatOpt = """
