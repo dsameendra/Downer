@@ -20,10 +20,10 @@
   <tbody>
     <tr>
       <td align="center" valign="top" style="border: none;">
-        <img src="https://imgur.com/EUiejdu.png" alt="Downer App Screenshot" width="400"/>
+        <img src="https://imgur.com/Ge4BPPo.png" alt="Downer App Screenshot" width="400"/>
       </td>
       <td align="center" valign="top" style="border: none;">
-        <img src="https://imgur.com/Q2snmAY.png" alt="Downer Menubar Screenshot" width="400"/>
+        <img src="https://imgur.com/nDnaa7s.png" alt="Downer Menubar Screenshot" width="400"/>
       </td>
     </tr>
   </tbody>
