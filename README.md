@@ -82,4 +82,14 @@ If you're building the app yourself via Xcode, you can export and install it man
 
 ---
 
+## ⚠️ Disclaimer
+
+This tool is intended solely for personal use and educational or research purposes.
+
+Downloading videos from YouTube may violate their [Terms of Service](https://www.youtube.com/t/terms) unless the video has an explicit download button or the content is licensed in a way that permits downloading.
+
+By using this app, **you assume full responsibility** for any content you download and how you use it. The developer does not condone or support any misuse of this tool to infringe upon copyrights or violate platform rules.
+
+---
+
 Built with ❤️ using [yt-dlp](https://github.com/yt-dlp/yt-dlp) and [ffmpeg](https://www.ffmpeg.org). Huge credit to the amazing developers behind these tools.
