@@ -45,7 +45,7 @@ struct PopOverView: View {
     var body: some View {
         VStack(spacing: 14) {
             // URL Input
-            TextField("Paste YouTube URL", text: $videoURL)
+            TextField("Paste URL", text: $videoURL)
                 .textFieldStyle(.roundedBorder)
                 .padding(.horizontal, 1)
                 .padding(.top, 10)

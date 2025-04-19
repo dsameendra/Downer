@@ -72,7 +72,7 @@ struct MainAppView: View {
             VStack(alignment: .center, spacing: 24) {
 
                 // URL
-                TextField("Enter YouTube URL", text: $videoURL)
+                TextField("Enter URL", text: $videoURL)
                     .textFieldStyle(.roundedBorder)
 
                 Divider()
