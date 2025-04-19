@@ -17,13 +17,14 @@ struct MainAppView: View {
     @AppStorage("ffprobePath") private var ffprobePath: String =
         "/opt/homebrew/bin/ffprobe"
 
+    // configurable download settings
     @AppStorage("downloadType") private var downloadTypeRaw = DownloadType.both
         .rawValue
     @AppStorage("selectedResolution") private var selectedResolution = "1080"
     @AppStorage("selectedVideoFormat") private var selectedVideoFormat = "mp4"
     @AppStorage("selectedAudioQuality") private var selectedAudioQuality =
-        "320k"
-    @AppStorage("selectedAudioFormat") private var selectedAudioFormat = "mp3"
+        "source"
+    @AppStorage("selectedAudioFormat") private var selectedAudioFormat = "opus"
     @AppStorage("destinationFolder") private var destinationFolderPath =
         FileManager
         .default
@@ -51,8 +52,20 @@ struct MainAppView: View {
         "4320", "2160", "1080", "720", "480", "360", "240",
     ]
     private let videoFormatOptions = ["mp4", "mkv", "webm"]
-    private let audioQualityOptions = ["256k", "192k", "128k", "64k"]
-    private let audioFormatOptions = ["mp3", "m4a", "opus"]
+
+    private let audioQualityOptions: [(label: String, value: String)] = [
+        ("Best available", "source"),
+        ("Up to 128 kbps", "128k"),
+        ("Up to 70 kbps", "70k"),
+        ("Up to 50 kbps", "50k"),
+    ]
+
+    private let audioFormatOptions: [(label: String, value: String)] = [
+        ("Source (no transcode)", "source"),
+        ("MP3", "mp3"),
+        ("AAC (M4A)", "m4a"),
+        ("Opus", "opus"),
+    ]
 
     var body: some View {
         ScrollView {
@@ -61,7 +74,7 @@ struct MainAppView: View {
                 // URL
                 TextField("Enter YouTube URL", text: $videoURL)
                     .textFieldStyle(.roundedBorder)
-                
+
                 Divider()
 
                 // destination
@@ -77,7 +90,7 @@ struct MainAppView: View {
                 }
 
                 Divider()
-                
+
                 // type selector
                 Picker("Download Type", selection: downloadType) {
                     ForEach(DownloadType.allCases) { Text($0.rawValue).tag($0) }
@@ -85,10 +98,14 @@ struct MainAppView: View {
                 .pickerStyle(.segmented)
 
                 Divider()
-                
+
                 // video options
                 if downloadType.wrappedValue != .audio {
                     Grid(horizontalSpacing: 16, verticalSpacing: 12) {
+                        GridRow {
+                            Text("Video Options")
+                            Spacer()
+                        }
                         GridRow {
                             Text("Resolution")
                             Picker("", selection: $selectedResolution) {
@@ -115,37 +132,52 @@ struct MainAppView: View {
                 if downloadType.wrappedValue != .video {
                     Grid(horizontalSpacing: 16, verticalSpacing: 12) {
                         GridRow {
+                            Text("Audio Options")
+                            Spacer()
+                        }
+                        GridRow {
                             Text("Quality")
                             Picker("", selection: $selectedAudioQuality) {
-                                ForEach(audioQualityOptions, id: \.self) {
-                                    Text($0)
+                                ForEach(audioQualityOptions, id: \.value) {
+                                    item in
+                                    Text(item.label).tag(item.value)
                                 }
                             }
                             .pickerStyle(.menu)
                         }
-                        GridRow {
-                            Text("Format")
-                            Picker("", selection: $selectedAudioFormat) {
-                                ForEach(audioFormatOptions, id: \.self) {
-                                    Text($0.uppercased())
+                        // only show Format picker in Audio‑only mode
+                        if downloadType.wrappedValue == .audio {
+                            GridRow {
+                                Text("Format")
+                                Picker("", selection: $selectedAudioFormat) {
+                                    ForEach(audioFormatOptions, id: \.value) {
+                                        item in
+                                        Text(item.label).tag(item.value)
+                                    }
                                 }
+                                .pickerStyle(.menu)
                             }
-                            .pickerStyle(.menu)
                         }
                     }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                
+
                 DisclosureGroup {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(
-                            "• **Your choices are remembered** – every setting you chose here will be your new defaults and will be used in the menubar pop-over app as well."
+                            "• **Persistent defaults** - every choice here becomes your new default, and carries over to the menu‑bar pop‑over."
                         )
                         Text(
-                            "• **Download / Cancel** – start downloading with one click and stop it at any time with the Cancel button."
+                            "• **Video formats and quality** - in Video modes, the highest-quality video track up to your selected resolution is fetched and packaged in your chosen container (MP4, MKV, or WebM) without re‑encoding, preserving the original quality."
                         )
                         Text(
-                            "• **Hide & show** – closing this window hides it (and the Dock icon). Click the menu‑bar icon to bring it back."
+                            "• **Audio format and quality** - 'Up to' will select the highest-quality YouTube audio stream whose bitrate is at or below X kbps. In Audio‑only mode you pick your output container (MP3, M4A/AAC, Opus or ‘Original’) however in Video+Audio mode it always use the best source audio codec."
+                        )
+                        Text(
+                            "• **Transcoding** - only runs when you choose a different format: picking ‘Source (no transcode)’ or ‘Opus’ streams uses the source directly; selecting MP3 or M4A will invoke ffmpeg to re‑encode at your chosen quality, upscaling to a higher bitrate if you select one above the source."
+                        )
+                        Text(
+                            "• **Hide & show** – closing the window hides it (and the Dock icon); click the menu‑bar icon to bring it back."
                         )
                     }
                     .font(.callout)
@@ -153,24 +185,27 @@ struct MainAppView: View {
                 } label: {
                     Text("Information")
                 }
-                
+
                 Divider()
-                
-                VStack (alignment: .center, spacing: 24){
-                    
+
+                VStack(alignment: .center, spacing: 24) {
+
                     // download / cancel button
                     Button {
                         isDownloading ? stopDownload() : startDownload()
                     } label: {
                         if isDownloading {
-                            Label("Cancel Download", systemImage: "xmark.circle")
+                            Label(
+                                "Cancel Download",
+                                systemImage: "xmark.circle"
+                            )
                         } else {
                             Label("Download", systemImage: "arrow.down.circle")
                         }
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(videoURL.isEmpty && !isDownloading)
-                    
+
                     ZStack {
                         if isDownloading {
                             ProgressView()
@@ -187,18 +222,27 @@ struct MainAppView: View {
                         }
                     }
                     .animation(.easeInOut(duration: 0.25), value: isDownloading)
-                    
+
                     Text(downloadStatus).font(.subheadline)
-                    
+
                     Spacer(minLength: 0)
                 }
             }
             .padding(32)
             .animation(.easeInOut, value: downloadType.wrappedValue)
-            
+
         }
-        .frame(width: 450, height: 600)
-        .tint(.red)  // accent colour for this window
+        .frame(width: 460, height: 620)
+        .tint(.red)
+        .onChange(of: downloadType.wrappedValue) { oldType, newType in
+            if newType != .audio {
+                selectedAudioFormat = "source"
+            }
+        }
+    }
+
+    private func numericAbr(_ quality: String) -> Int? {
+        Int(quality.replacingOccurrences(of: "k", with: ""))
     }
 
     // MARK: Actions
@@ -246,25 +290,40 @@ struct MainAppView: View {
             return
         }
 
+        let audioFilter: String = {
+            if selectedAudioQuality == "source" {  // best available
+                return "bestaudio"
+            }
+            if let abr = numericAbr(selectedAudioQuality) {  // cap at chosen ABR
+                return "bestaudio[abr<=\(abr)][vcodec=none]"
+            }
+            return "bestaudio"
+        }()
+
         let formatOpt: String
         switch downloadType.wrappedValue {
+
         case .audio:
-            formatOpt = #"""
-                 -f bestaudio --extract-audio \
-                 --audio-format \#(selectedAudioFormat) \
-                 --audio-quality \#(selectedAudioQuality)
-                """#
+            var fmt = "-f \"\(audioFilter)\""
+            if selectedAudioFormat != "opus" {  // transcode only if asked
+                fmt += " --extract-audio --audio-format \(selectedAudioFormat)"
+                if let abr = numericAbr(selectedAudioQuality), abr <= 160 {
+                    fmt += " --audio-quality \(selectedAudioQuality)"
+                }
+            }
+            formatOpt = fmt
+
         case .video:
-            formatOpt = #"""
-                 -f "bestvideo[height<=\#(selectedResolution)]" \
-                 --merge-output-format \#(selectedVideoFormat) \
-                 --no-audio
-                """#
+            formatOpt = """
+               -f "bestvideo[height<=\(selectedResolution)][acodec=none]" \
+               --remux-video \(selectedVideoFormat)
+               """
+
         case .both:
-            formatOpt = #"""
-                 -f "bestvideo[height<=\#(selectedResolution)]+bestaudio" \
-                 --merge-output-format \#(selectedVideoFormat)
-                """#
+            formatOpt = """
+                -f "bestvideo[height<=\(selectedResolution)]+\(audioFilter)" \
+                --merge-output-format \(selectedVideoFormat)
+                """
         }
 
         let workDir = destinationFolder.path.escaped()
@@ -312,6 +371,13 @@ struct MainAppView: View {
         do { try proc.run() } catch {
             downloadStatus = "Error: \(error.localizedDescription)"
             isDownloading = false
+        }
+
+        // Revert to idle after 10 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+            if !self.isDownloading {
+                self.downloadStatus = "Idle"
+            }
         }
     }
 }

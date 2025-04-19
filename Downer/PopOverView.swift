@@ -14,8 +14,8 @@ struct PopOverView: View {
     @AppStorage("selectedResolution") private var selectedResolution = "1080"
     @AppStorage("selectedVideoFormat") private var selectedVideoFormat = "mp4"
     @AppStorage("selectedAudioQuality") private var selectedAudioQuality =
-        "320k"
-    @AppStorage("selectedAudioFormat") private var selectedAudioFormat = "mp3"
+        "source"
+    @AppStorage("selectedAudioFormat") private var selectedAudioFormat = "opus"
 
     @AppStorage("destinationFolder") private var destinationFolderPath =
         FileManager
@@ -106,11 +106,8 @@ struct PopOverView: View {
         .tint(.red)
     }
 
-    private func stopDownload() {
-        currentProcess?.terminate()
-        currentProcess = nil
-        isDownloading = false
-        downloadStatus = "Download cancelled."
+    private func numericAbr(_ quality: String) -> Int? {
+        Int(quality.replacingOccurrences(of: "k", with: ""))
     }
 
     private func startDownload() {
@@ -134,33 +131,54 @@ struct PopOverView: View {
             return
         }
 
-        isDownloading = true
-        downloadStatus = "Starting…"
+        // build yt‑dlp format string
+        let audioFilter: String = {
+            if selectedAudioQuality == "source" {
+                return "bestaudio"
+            }
+            if let abr = numericAbr(selectedAudioQuality) {
+                return "bestaudio[abr<=\(abr)][vcodec=none]"
+            }
+            return "bestaudio"
+        }()
 
         let formatOpt: String
         switch downloadType {
         case .audio:
-            formatOpt = #"""
-                 -f bestaudio --extract-audio \
-                 --audio-format \#(selectedAudioFormat) \
-                 --audio-quality \#(selectedAudioQuality)
-                """#
+            var fmt = "-f \"\(audioFilter)\""
+
+            // decide whether to transcode
+            if selectedAudioFormat == "source" {
+                // user wants untouched stream in its native container
+                fmt += " --audio-format best"
+            } else if selectedAudioFormat != "opus" {
+                // transcode when requesting mp3 / m4a
+                fmt += " --extract-audio --audio-format \(selectedAudioFormat)"
+                if let abr = numericAbr(selectedAudioQuality), abr <= 160 {
+                    fmt += " --audio-quality \(selectedAudioQuality)"
+                }
+            }
+            formatOpt = fmt
+
         case .video:
-            formatOpt = #"""
-                 -f "bestvideo[height<=\#(selectedResolution)]" \
-                 --merge-output-format \#(selectedVideoFormat) \
-                 --no-audio
-                """#
+            formatOpt = """
+               -f "bestvideo[height<=\(selectedResolution)][acodec=none]" \
+               --remux-video \(selectedVideoFormat)
+               """
+
         case .both:
-            formatOpt = #"""
-                 -f "bestvideo[height<=\#(selectedResolution)]+bestaudio" \
-                 --merge-output-format \#(selectedVideoFormat)
-                """#
+            formatOpt = """
+                -f \"bestvideo[height<=\(selectedResolution)]+\(audioFilter)\" \\
+                --merge-output-format \(selectedVideoFormat)
+                """
         }
 
         let workDir = destinationFolder.path.escaped()
         let cmd =
             "cd \(workDir) && \"\(ytDlpPath.escaped())\" \(formatOpt) \"\(videoURL.escaped())\""
+
+        isDownloading = true
+        downloadStatus = "Starting…"
 
         // —— launch —— //
         let proc = Process()
@@ -201,5 +219,19 @@ struct PopOverView: View {
             downloadStatus = "Launch error: \(error.localizedDescription)"
             isDownloading = false
         }
+
+        // Revert to idle after 10 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+            if !self.isDownloading {
+                self.downloadStatus = "Idle"
+            }
+        }
+    }
+
+    private func stopDownload() {
+        currentProcess?.terminate()
+        currentProcess = nil
+        isDownloading = false
+        downloadStatus = "Download cancelled."
     }
 }
