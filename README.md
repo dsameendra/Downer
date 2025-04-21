@@ -40,6 +40,34 @@
 
 All preferences are remembered across launches.
 
+## 💽 Installation Guide
+
+### 1. Download and Install the App
+
+Head over to the [GitHub Releases](https://github.com/dsameendra/Downer/releases) page and download the latest `.dmg` file.
+
+- Open the `.dmg` and drag `Downer.app` into your `/Applications` folder.
+
+---
+
+### 2. Allow the App to Run
+
+macOS might block the app from launching, saying:
+
+> “Downer.app can’t be opened.”
+
+This happens because the app is not signed with a paid Apple Developer account. But you can manually allow it using Terminal. Follow the instructions below.
+
+1. Sign the app locally with an ad-hoc signature
+```bash
+codesign --force --deep --sign - /Applications/Downer.app
+```
+
+2. Remove the quarantine flag so macOS treats it as safe
+```bash
+xattr -dr com.apple.quarantine /Applications/Downer.app
+```
+
 ## 🔧 Building from Source
 
 ### Requirements
