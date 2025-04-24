@@ -90,7 +90,7 @@ struct PopOverView: View {
                             )
                             .stroke(Color.white.opacity(0.2), lineWidth: 1)
                         )
-                    TextField("Paste URL", text: $videoURL)
+                    TextField("Enter video/playlist URL", text: $videoURL)
                         .textFieldStyle(.plain)
                         .padding(.horizontal, 12)
                         .font(.subheadline)
