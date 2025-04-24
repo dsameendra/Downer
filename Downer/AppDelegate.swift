@@ -23,17 +23,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let hostVC = NSHostingController(rootView: MainAppView())
         let w = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 400, height: 540),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         w.contentViewController = hostVC
         w.title = "Downer"
+        w.titleVisibility            = .visible
+        w.titlebarAppearsTransparent = true
+        w.isMovableByWindowBackground = true
+        w.backgroundColor            = .black
         w.center()
         w.delegate = self
         w.makeKeyAndOrderFront(nil)
         w.isReleasedWhenClosed = false
         self.mainWindow = w
+        
 
         // show dock icon
         NSApp.setActivationPolicy(.regular)
@@ -50,13 +55,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             withLength: NSStatusItem.variableLength
         )
         if let btn = statusItem.button {
-            btn.image = NSImage(
-                systemSymbolName: "arrow.down.circle.fill",
-                accessibilityDescription: "Downer"
+            let cfg = NSImage.SymbolConfiguration(
+                pointSize: 16,
+                weight: .regular
             )
-//            btn.image = NSImage(named: NSImage.Name("AppIcon"))
-//            btn.image?.size = NSSize(width: 18, height: 18) // typical menubar size
-
+            btn.image = NSImage(
+                systemSymbolName: "chevron.down.square.fill",
+                accessibilityDescription: "Downer"
+            )?
+            .withSymbolConfiguration(cfg)
+            btn.image?.isTemplate = true
             btn.sendAction(on: [.leftMouseUp, .rightMouseUp])
             btn.action = #selector(statusItemClicked(_:))
             btn.target = self
@@ -144,12 +152,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let hostVC = NSHostingController(rootView: MainAppView())
             let w = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 400, height: 540),
-                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                 backing: .buffered,
                 defer: false
             )
             w.contentViewController = hostVC
             w.title = "Downer"
+            w.titleVisibility            = .visible
+            w.titlebarAppearsTransparent = true
+            w.isMovableByWindowBackground = true
+            w.backgroundColor            = .black
             w.isReleasedWhenClosed = false
             w.delegate = self
             mainWindow = w

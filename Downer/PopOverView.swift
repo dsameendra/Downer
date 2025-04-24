@@ -1,5 +1,5 @@
 //
-//  MiniDownloadView.swift
+//  PopOverView.swift
 //  Downer
 //
 //  Created by Dumindu Sameendra on 2025-04-17.
@@ -42,74 +42,133 @@ struct PopOverView: View {
         URL(fileURLWithPath: destinationFolderPath)
     }
 
-    var body: some View {
-        VStack(spacing: 14) {
-            // URL Input
-            TextField("Paste URL", text: $videoURL)
-                .textFieldStyle(.roundedBorder)
-                .padding(.horizontal, 1)
-                .padding(.top, 10)
-                .onSubmit {
-                    if !isDownloading && !videoURL.isEmpty {
-                        startDownload()
-                    }
-                }
+    @Environment(\.colorScheme) var colorScheme
 
-            // Action button
-            Button {
-                isDownloading ? stopDownload() : startDownload()
-            } label: {
-                Label(
-                    isDownloading ? "Cancel" : "Download",
-                    systemImage: isDownloading
-                        ? "xmark.circle" : "arrow.down.circle"
-                )
-                .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(videoURL.isEmpty && !isDownloading)
-            .animation(.easeInOut(duration: 0.2), value: isDownloading)
-
-            ZStack {
-                if isDownloading {
-                    ProgressView()
-                        .scaleEffect(0.5)
-                        .transition(.opacity)
-                        .frame(height: 15)
-                        .frame(alignment: .center)
-                } else {
-                    Image(systemName: "chevron.down")
-                        .foregroundColor(.secondary)
-                        .opacity(0.8)
-                        .font(.system(size: 15, weight: .medium))
-                        .frame(height: 15)
-                }
-            }
-            .animation(.easeInOut(duration: 0.25), value: isDownloading)
-
-            // Current status
-            Text(downloadStatus)
-                .font(.footnote)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(minHeight: 24)
-                .frame(maxWidth: .infinity)
-                .fixedSize(horizontal: false, vertical: true)
-                .lineLimit(2)
-
-            Divider()
-
-            // Toolbar button
-            HStack {
-                Button(action: AppDelegate.shared.openFullApp) {
-                    Label("Open App", systemImage: "square.and.arrow.up")
-                        .labelStyle(.titleAndIcon)
-                }
-                .buttonStyle(.bordered)
-            }
+    // MARK: - Theme
+    private var glassBackground: some View {
+        ZStack {
+            (colorScheme == .dark
+                ? Color.black.opacity(0.15) : Color.white.opacity(0.15))
         }
-        .padding(20)
-        .frame(width: 320, height: 220)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private var brandGradient: LinearGradient {
+        LinearGradient(
+            gradient: Gradient(colors: [
+                Color.red.opacity(0.9), Color.red.opacity(0.7),
+            ]),
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    var body: some View {
+        ZStack {
+            // Background gradient
+            LinearGradient(
+                gradient: Gradient(colors: [
+                    colorScheme == .dark
+                        ? Color(white: 0.1) : Color(white: 0.95),
+                    colorScheme == .dark ? Color.black : Color.white,
+                ]),
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            VStack(spacing: 16) {
+                // URL Input
+                ZStack(alignment: .leading) {
+                    glassBackground
+                        .frame(height: 36)
+                        .overlay(
+                            RoundedRectangle(
+                                cornerRadius: 10,
+                                style: .continuous
+                            )
+                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        )
+                    TextField("Paste URL", text: $videoURL)
+                        .textFieldStyle(.plain)
+                        .padding(.horizontal, 12)
+                        .font(.subheadline)
+                }
+
+                // Download button
+                Button(action: {
+                    isDownloading ? stopDownload() : startDownload()
+                }) {
+                    HStack {
+                        Image(
+                            systemName: isDownloading
+                                ? "xmark.circle.fill" : "arrow.down.circle.fill"
+                        )
+                        .font(.system(size: 14, weight: .medium))
+                        Text(isDownloading ? "Cancel" : "Download")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(
+                        Group {
+                            if isDownloading {
+                                Color.gray.opacity(0.2)
+                            } else {
+                                brandGradient
+                            }
+                        }
+                    )
+                    .clipShape(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    )
+                    .foregroundColor(isDownloading ? .primary : .white)
+                    .shadow(
+                        color: Color.red.opacity(isDownloading ? 0 : 0.3),
+                        radius: 4,
+                        x: 0,
+                        y: 2
+                    )
+                }
+                .disabled(videoURL.isEmpty && !isDownloading)
+                .buttonStyle(.plain)
+
+                // Status indicator
+                HStack(spacing: 10) {
+                    if isDownloading {
+                        ProgressView()
+                            .scaleEffect(0.5)
+                            .frame(width: 16, height: 16)
+                    } else {
+                        Image(systemName: "circle.fill")
+                            .foregroundColor(
+                                downloadStatus == "Idle"
+                                    ? .green
+                                    : downloadStatus.contains(
+                                        "completed"
+                                    ) ? .green : .orange
+                            )
+                            .font(.system(size: 8))
+                    }
+
+                    // Status text
+                    Text(downloadStatus)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(height: 20)
+                .animation(
+                    .easeInOut(duration: 0.2),
+                    value: isDownloading
+                )
+            }
+            .padding(20)
+        }
+        .frame(width: 360, height: 180)
         .tint(.red)
     }
 
