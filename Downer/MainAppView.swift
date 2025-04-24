@@ -277,7 +277,7 @@ struct MainAppView: View {
             return
         }
         guard FileManager.default.isExecutableFile(atPath: ytDlpPath) else {
-            downloadStatus = "yt‑dlp not found.\nCheck Settings → Tool Paths."
+            downloadStatus = "yt‑dlp not found.\nCheck Settings → Tool Paths."
             isDownloading = false
             return
         }
@@ -285,7 +285,7 @@ struct MainAppView: View {
             FileManager.default.isExecutableFile(atPath: ffprobePath)
         else {
             downloadStatus =
-                "ffmpeg / ffprobe not found.\nCheck Settings → Tool Paths."
+                "ffmpeg / ffprobe not found.\nCheck Settings → Tool Paths."
             isDownloading = false
             return
         }
@@ -305,7 +305,7 @@ struct MainAppView: View {
 
         case .audio:
             var fmt = "-f \"\(audioFilter)\""
-            if selectedAudioFormat != "opus" {  // transcode only if asked
+            if selectedAudioFormat != "source" {  // transcode only if asked
                 fmt += " --extract-audio --audio-format \(selectedAudioFormat)"
                 if let abr = numericAbr(selectedAudioQuality), abr <= 160 {
                     fmt += " --audio-quality \(selectedAudioQuality)"
@@ -315,9 +315,9 @@ struct MainAppView: View {
 
         case .video:
             formatOpt = """
-               -f "bestvideo[height<=\(selectedResolution)][acodec=none]" \
-               --remux-video \(selectedVideoFormat)
-               """
+                -f "bestvideo[height<=\(selectedResolution)][acodec=none]" \
+                --remux-video \(selectedVideoFormat)
+                """
 
         case .both:
             formatOpt = """
