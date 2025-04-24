@@ -11,21 +11,37 @@
 - Minimal and clean **native macOS UI** with red-accent styling and dark mode support
 
 <table align="center" style="border: none; border-collapse: collapse;">
-  <thead>
+<!--   <thead>
     <tr>
       <th align="center" style="padding: 8px; border: none;">App</th>
       <th align="center" style="padding: 8px; border: none;">Menubar Popover</th>
     </tr>
-  </thead>
+  </thead> -->
   <tbody>
     <tr>
-      <td align="center" valign="top" style="border: none;">
-        <img src="https://imgur.com/Ge4BPPo.png" alt="Downer App Screenshot" width="400"/>
+	<td align="center" valign="top" style="border: none;">
+		Darkmode
+		<br>
+		<img src="https://imgur.com/HJsr9dk.png" alt="Downer App Screenshot" width="300"/>
+	</td>
+	<td align="center" valign="top" style="border: none;">
+		Lightmode
+		<br>
+        	<img src="https://imgur.com/13WYeoy.png" alt="Downer App Lightmode Screenshot" width="300"/>
+     	</td>
+   </tr>
+   <tr>
+       	<td align="center" valign="top" style="border: none;">
+		Menubar App
+		<br>
+        	<img src="https://imgur.com/DqHR9HI.png" alt="Downer Menubar Screenshot" width="300"/>
+      	</td>
+      	<td align="center" valign="top" style="border: none;">
+		Settings
+		<br>
+        	<img src="https://imgur.com/NTuM6in.png" alt="Downer Settings Screenshot" width="300"/>
       </td>
-      <td align="center" valign="top" style="border: none;">
-        <img src="https://imgur.com/nDnaa7s.png" alt="Downer Menubar Screenshot" width="400"/>
-      </td>
-    </tr>
+   </tr>
   </tbody>
 </table>
 
