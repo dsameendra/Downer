@@ -63,6 +63,7 @@ All preferences are remembered across launches.
 Head over to the [GitHub Releases](https://github.com/dsameendra/Downer/releases) page and download the latest `.dmg` file.
 
 - Open the `.dmg` and drag `Downer.app` into your `/Applications` folder.
+- Make sure `yt-dlp` and `ffmpeg` is installed. If not install with `brew install yt-dlp ffmpeg`. 
 
 ---
 
