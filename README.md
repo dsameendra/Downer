@@ -1,4 +1,4 @@
-# Downer — YT Downloader for macOS
+# Downer — Video Downloader for macOS
 
 **Downer** is a lightweight, native macOS app that lets you download your videos or audio from YT and more with just a few clicks. It lives in your **menubar** for quick access and also offers a full-featured main window.
 
