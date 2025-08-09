@@ -70,590 +70,619 @@ struct MainAppView: View {
 
     @Environment(\.colorScheme) var colorScheme
 
-    private var glassBackground: some View {
-        ZStack {
-            if colorScheme == .dark {
-                Color.black.opacity(0.15)
-            } else {
-                Color.white.opacity(0.15)
-            }
-        }
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: 3)
-    }
-
-    private var brandGradient: LinearGradient {
-        LinearGradient(
-            gradient: Gradient(colors: [
-                Color.red.opacity(0.9), Color.red.opacity(0.7),
-            ]),
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
 
     var body: some View {
-        ZStack {
-            // Background gradient
-            LinearGradient(
-                gradient: Gradient(colors: [
-                    colorScheme == .dark ? Color.black : Color(white: 0.95),
-                    colorScheme == .dark ? Color(white: 0.15) : Color.white,
-                ]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                Color.clear.frame(height: 1)
-
-                ScrollView {
-                    VStack(alignment: .center, spacing: 10) {
-                        // URL Field
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Media URL")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-
-                            ZStack(alignment: .leading) {
-                                RoundedRectangle(
-                                    cornerRadius: 10,
-                                    style: .continuous
-                                )
-                                .fill(.ultraThinMaterial)
-                                .frame(height: 38)
-                                .overlay(
-                                    RoundedRectangle(
-                                        cornerRadius: 10,
-                                        style: .continuous
-                                    )
-                                    .stroke(
-                                        Color.white.opacity(0.2),
-                                        lineWidth: 1
-                                    )
-                                )
-
-                                HStack {
-                                    Image(systemName: "link")
+        Group {
+            if #available(macOS 26, *) {
+                ZStack {
+                    VStack(spacing: 0) {
+                        Color.clear.frame(height: 1)
+                        ScrollView {
+                            VStack(alignment: .center, spacing: 14) {
+                                // URL Field
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Media URL")
+                                        .font(.subheadline)
                                         .foregroundColor(.secondary)
-                                        .padding(.leading, 10)
-
-                                    TextField(
-                                        "Enter video/playlist URL",
-                                        text: $videoURL
-                                    )
-                                    .textFieldStyle(.plain)
-                                    .padding(.vertical, 10)
-
-                                    if !videoURL.isEmpty {
-                                        Button(action: { videoURL = "" }) {
-                                            Image(
-                                                systemName: "xmark.circle.fill"
-                                            )
-                                            .foregroundColor(.secondary)
-                                        }
-                                        .buttonStyle(.plain)
-                                        .padding(.trailing, 10)
-                                    }
-                                }
-                            }
-                        }
-                        .padding(.top, 8)
-
-                        // Destination folder
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Save Location")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-
-                            HStack(spacing: 8) {
-                                ZStack {
-                                    RoundedRectangle(
-                                        cornerRadius: 10,
-                                        style: .continuous
-                                    )
-                                    .fill(.ultraThinMaterial)
-                                    .frame(height: 38)
-                                    .overlay(
-                                        RoundedRectangle(
-                                            cornerRadius: 10,
-                                            style: .continuous
-                                        )
-                                        .stroke(
-                                            Color.white.opacity(0.2),
-                                            lineWidth: 1
-                                        )
-                                    )
-
                                     HStack {
-                                        Image(systemName: "folder")
+                                        Image(systemName: "link")
                                             .foregroundColor(.secondary)
                                             .padding(.leading, 10)
-
-                                        Text(
-                                            destinationFolder.relativePath
+                                        TextField(
+                                            "Enter video/playlist URL",
+                                            text: $videoURL
                                         )
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
+                                        .textFieldStyle(.plain)
                                         .padding(.vertical, 10)
+                                        if !videoURL.isEmpty {
+                                            Button(action: { videoURL = "" }) {
+                                                Image(systemName: "xmark.circle.fill")
+                                                    .foregroundColor(.secondary)
+                                            }
+                                            .buttonStyle(.plain)
+                                            .padding(.trailing, 10)
+                                        }
+                                    }
+                                    .glassEffect()
+                                    .frame(height: 38)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                }
+                                .padding(.top, 8)
 
+                                // Destination folder
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Save Location")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                    HStack(spacing: 8) {
+                                        HStack {
+                                            Image(systemName: "folder")
+                                                .foregroundColor(.secondary)
+                                                .padding(.leading, 10)
+                                            Text(destinationFolder.relativePath)
+                                                .lineLimit(1)
+                                                .truncationMode(.middle)
+                                                .padding(.vertical, 10)
+                                            Spacer()
+                                        }
+                                        Button(action: selectFolder) {
+                                            Text("Change")
+                                                .fontWeight(.medium)
+                                        }
+                                        .frame(width: 59)
+                                        .buttonStyle(.glass)
+                                        .tint(.primary)
+                                    }
+                                    .glassEffect()
+                                    .frame(height: 38)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                }
+
+                                // Download Type Selector
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Download Type")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                    
+                                    if #available(macOS 26, *) {
+                                        // Native Liquid Glass segmented style
+                                        Picker("", selection: downloadType) {
+                                            ForEach(DownloadType.allCases) { type in
+                                                Text(type.rawValue).tag(type)
+                                                    .frame(height: 38)
+                                                    .glassEffect()
+                                            }
+                                        }
+                                        .frame(height: 38)
+                                        .pickerStyle(.segmented)
+                                        .glassEffect(.clear) // makes the whole segmented control float in glass
+                                        .tint(.red) // highlight color for selected tab
+
+                                    } else {
+                                        // Fallback for older macOS - bordered segmented control
+                                        Picker("", selection: downloadType) {
+                                            ForEach(DownloadType.allCases) { type in
+                                                Text(type.rawValue).tag(type)
+                                            }
+                                        }
+                                        .pickerStyle(.segmented)
+                                        .background(.ultraThinMaterial)
+                                        .cornerRadius(8)
+                                        .tint(.red)
+                                    }
+                                }
+
+                                // Video & Audio Options
+                                VStack(alignment: .leading, spacing: 10) {
+                                    if downloadType.wrappedValue != .audio {
+                                        VStack(alignment: .leading, spacing: 10) {
+                                            Text("Video Options")
+                                                .font(.subheadline)
+                                                .foregroundColor(.secondary)
+                                            GlassPickerView(
+                                                title: "Resolution",
+                                                options: resolutionOptions.map { "\($0)p" },
+                                                selection: Binding(
+                                                    get: { "\(selectedResolution)p" },
+                                                    set: { selectedResolution = $0.replacingOccurrences(of: "p", with: "") }
+                                                )
+                                            )
+                                            GlassPickerView(
+                                                title: "Container",
+                                                options: videoFormatOptions.map { $0.uppercased() },
+                                                selection: Binding(
+                                                    get: { selectedVideoFormat.uppercased() },
+                                                    set: { selectedVideoFormat = $0.lowercased() }
+                                                )
+                                            )
+                                        }
+                                        .padding(16)
+                                        .glassEffect()
+                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                        .transition(.asymmetric(
+                                            insertion: .scale(scale: 0.95).combined(with: .opacity),
+                                            removal: .scale(scale: 0.95).combined(with: .opacity)
+                                        ))
+                                    }
+                                    if downloadType.wrappedValue != .video {
+                                        VStack(alignment: .leading, spacing: 16) {
+                                            Text("Audio Options")
+                                                .font(.subheadline)
+                                                .foregroundColor(.secondary)
+                                            GlassPickerView(
+                                                title: "Quality",
+                                                options: audioQualityOptions.map { $0.label },
+                                                selection: Binding(
+                                                    get: {
+                                                        audioQualityOptions.first(where: { $0.value == selectedAudioQuality })?.label ?? ""
+                                                    },
+                                                    set: { newLabel in
+                                                        if let option = audioQualityOptions.first(where: { $0.label == newLabel }) {
+                                                            selectedAudioQuality = option.value
+                                                        }
+                                                    }
+                                                )
+                                            )
+                                            if downloadType.wrappedValue == .audio {
+                                                GlassPickerView(
+                                                    title: "Format",
+                                                    options: audioFormatOptions.map { $0.label },
+                                                    selection: Binding(
+                                                        get: {
+                                                            audioFormatOptions.first(where: { $0.value == selectedAudioFormat })?.label ?? ""
+                                                        },
+                                                        set: { newLabel in
+                                                            if let option = audioFormatOptions.first(where: { $0.label == newLabel }) {
+                                                                selectedAudioFormat = option.value
+                                                            }
+                                                        }
+                                                    )
+                                                )
+                                            }
+                                        }
+                                        .padding(16)
+                                        .glassEffect()
+                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                        .transition(.asymmetric(
+                                            insertion: .scale(scale: 0.95).combined(with: .opacity),
+                                            removal: .scale(scale: 0.95).combined(with: .opacity)
+                                        ))
+                                    }
+                                }
+                                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: downloadType.wrappedValue)
+
+                                // Information Disclosure
+                                DisclosureGroup(isExpanded: $infoExpanded) {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        InfoRow(
+                                            icon: "arrow.triangle.2.circlepath",
+                                            title: "Persistent defaults",
+                                            description: "Every choice here becomes your new default, and carries over to the menu‑bar pop‑over."
+                                        )
+                                        InfoRow(
+                                            icon: "video.fill",
+                                            title: "Video formats and quality",
+                                            description: "In Video modes, the highest-quality video track up to your selected resolution is fetched and packaged in your chosen container."
+                                        )
+                                        InfoRow(
+                                            icon: "music.note",
+                                            title: "Audio format and quality",
+                                            description: "'Up to' will select the highest-quality audio stream whose bitrate is at or below X kbps."
+                                        )
+                                        InfoRow(
+                                            icon: "arrow.triangle.swap",
+                                            title: "Transcoding",
+                                            description: "Only runs when you choose a different format: picking 'Source' uses the source directly."
+                                        )
+                                        InfoRow(
+                                            icon: "eye.slash",
+                                            title: "Hide & show",
+                                            description: "Closing the window hides it (and the Dock icon); click the menu‑bar icon to bring it back."
+                                        )
+                                    }
+                                    .padding(.top, 6)
+                                } label: {
+                                    HStack {
+                                        Text("Information")
+                                            .fontWeight(.medium)
                                         Spacer()
                                     }
-                                }
-
-                                Button(action: selectFolder) {
-                                    Text("Change")
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 9)
-                                        .background(
-                                            RoundedRectangle(
-                                                cornerRadius: 10,
-                                                style: .continuous
-                                            )
-                                            .fill(brandGradient)
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                                .frame(width: 75)
-                            }
-                        }
-
-                        // Download Type Selector
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Download Type")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-
-                            ZStack {
-                                RoundedRectangle(
-                                    cornerRadius: 10,
-                                    style: .continuous
-                                )
-                                .fill(.ultraThinMaterial)
-                                .overlay(
-                                    RoundedRectangle(
-                                        cornerRadius: 10,
-                                        style: .continuous
-                                    )
-                                    .stroke(
-                                        Color.white.opacity(0.2),
-                                        lineWidth: 1
-                                    )
-                                )
-
-                                HStack(spacing: 2) {
-                                    ForEach(DownloadType.allCases) { type in
-                                        Button(action: {
-                                            withAnimation(
-                                                .spring(response: 0.3)
-                                            ) {
-                                                downloadType.wrappedValue = type
-                                            }
-                                        }) {
-                                            Text(type.rawValue)
-                                                .fontWeight(.medium)
-                                                .frame(maxWidth: .infinity)
-                                                .padding(.vertical, 8)
-                                                .background(
-                                                    downloadType.wrappedValue
-                                                        == type
-                                                        ? RoundedRectangle(
-                                                            cornerRadius: 8,
-                                                            style: .continuous
-                                                        )
-                                                        .fill(
-                                                            LinearGradient(
-                                                                gradient:
-                                                                    Gradient(
-                                                                        colors: [
-                                                                            Color
-                                                                                .red
-                                                                                .opacity(
-                                                                                    0.8
-                                                                                ),
-                                                                            Color
-                                                                                .red
-                                                                                .opacity(
-                                                                                    0.6
-                                                                                ),
-                                                                        ]),
-                                                                startPoint:
-                                                                    .topLeading,
-                                                                endPoint:
-                                                                    .bottomTrailing
-                                                            )
-                                                        )
-                                                        .shadow(
-                                                            color: Color.red
-                                                                .opacity(0.3),
-                                                            radius: 4,
-                                                            x: 0,
-                                                            y: 2
-                                                        )
-                                                        : nil
-                                                )
-                                                .foregroundColor(
-                                                    downloadType.wrappedValue
-                                                        == type
-                                                        ? .white : .primary
-                                                )
-                                                .contentShape(
-                                                    RoundedRectangle(
-                                                        cornerRadius: 10,
-                                                        style: .continuous
-                                                    )
-                                                )
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        withAnimation(.easeInOut) {
+                                            infoExpanded.toggle()
                                         }
-                                        .buttonStyle(.plain)
                                     }
                                 }
-                                .padding(3)
-                                .animation(
-                                    .spring(response: 0.3),
-                                    value: downloadType.wrappedValue
-                                )
+                                .padding(14)
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .glassEffect()
                             }
+                            .padding(.horizontal, 18)
+                            .padding(.bottom, 18)
                         }
-
-                        VStack(alignment: .leading, spacing: 10) {
-                            // Video options
-                            if downloadType.wrappedValue != .audio {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    Text("Video Options")
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
-
-                                    // Resolution picker (fixed)
-                                    GlassPickerView(
-                                        title: "Resolution",
-                                        options: resolutionOptions.map {
-                                            "\($0)p"
-                                        },
-                                        selection: Binding(
-                                            get: { "\(selectedResolution)p" },
-                                            set: {
-                                                selectedResolution =
-                                                    $0.replacingOccurrences(
-                                                        of: "p",
-                                                        with: ""
-                                                    )
-                                            }
-                                        )
-                                    )
-
-                                    // Format picker (fixed)
-                                    GlassPickerView(
-                                        title: "Container",
-                                        options: videoFormatOptions.map {
-                                            $0.uppercased()
-                                        },
-                                        selection: Binding(
-                                            get: {
-                                                selectedVideoFormat.uppercased()
-                                            },
-                                            set: {
-                                                selectedVideoFormat =
-                                                    $0.lowercased()
-                                            }
-                                        )
-                                    )
-                                }
-                                .padding(16)
-                                .background(glassBackground)
-                                .transition(
-                                    .asymmetric(
-                                        insertion: .scale(scale: 0.95).combined(
-                                            with: .opacity
-                                        ),
-                                        removal: .scale(scale: 0.95).combined(
-                                            with: .opacity
-                                        )
-                                    )
-                                )
-                            }
-
-                            // Audio options
-                            if downloadType.wrappedValue != .video {
-                                VStack(alignment: .leading, spacing: 16) {
-                                    Text("Audio Options")
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
-
-                                    // Audio quality picker
-                                    GlassPickerView(
-                                        title: "Quality",
-                                        options: audioQualityOptions.map {
-                                            $0.label
-                                        },
-                                        selection: Binding(
-                                            get: {
-                                                audioQualityOptions.first(
-                                                    where: {
-                                                        $0.value
-                                                            == selectedAudioQuality
-                                                    })?.label ?? ""
-                                            },
-                                            set: { newLabel in
-                                                if let option =
-                                                    audioQualityOptions.first(
-                                                        where: {
-                                                            $0.label == newLabel
-                                                        })
-                                                {
-                                                    selectedAudioQuality =
-                                                        option.value
-                                                }
-                                            }
-                                        )
-                                    )
-
-                                    // Format picker (Audio only mode)
-                                    if downloadType.wrappedValue == .audio {
-                                        GlassPickerView(
-                                            title: "Format",
-                                            options: audioFormatOptions.map {
-                                                $0.label
-                                            },
-                                            selection: Binding(
-                                                get: {
-                                                    audioFormatOptions.first(
-                                                        where: {
-                                                            $0.value
-                                                                == selectedAudioFormat
-                                                        })?.label ?? ""
-                                                },
-                                                set: { newLabel in
-                                                    if let option =
-                                                        audioFormatOptions.first(
-                                                            where: {
-                                                                $0.label
-                                                                    == newLabel
-                                                            })
-                                                    {
-                                                        selectedAudioFormat =
-                                                            option.value
-                                                    }
-                                                }
-                                            )
-                                        )
-                                    }
-                                }
-                                .padding(16)
-                                .background(glassBackground)
-                                .transition(
-                                    .asymmetric(
-                                        insertion: .scale(scale: 0.95).combined(
-                                            with: .opacity
-                                        ),
-                                        removal: .scale(scale: 0.95).combined(
-                                            with: .opacity
-                                        )
-                                    )
-                                )
-                            }
-                        }
-                        .animation(
-                            .spring(response: 0.3, dampingFraction: 0.7),
-                            value: downloadType.wrappedValue
-                        )
-
-                        // Information disclosure (condensed)
-                        DisclosureGroup(isExpanded: $infoExpanded) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                InfoRow(
-                                    icon: "arrow.triangle.2.circlepath",
-                                    title: "Persistent defaults",
-                                    description:
-                                        "Every choice here becomes your new default, and carries over to the menu‑bar pop‑over."
-                                )
-
-                                InfoRow(
-                                    icon: "video.fill",
-                                    title: "Video formats and quality",
-                                    description:
-                                        "In Video modes, the highest-quality video track up to your selected resolution is fetched and packaged in your chosen container."
-                                )
-
-                                InfoRow(
-                                    icon: "music.note",
-                                    title: "Audio format and quality",
-                                    description:
-                                        "'Up to' will select the highest-quality audio stream whose bitrate is at or below X kbps."
-                                )
-
-                                InfoRow(
-                                    icon: "arrow.triangle.swap",
-                                    title: "Transcoding",
-                                    description:
-                                        "Only runs when you choose a different format: picking 'Source' uses the source directly."
-                                )
-
-                                InfoRow(
-                                    icon: "eye.slash",
-                                    title: "Hide & show",
-                                    description:
-                                        "Closing the window hides it (and the Dock icon); click the menu‑bar icon to bring it back."
-                                )
-                            }
-                            .padding(.top, 6)
-                        } label: {
-                            HStack {
-                                Text("Information")
-                                    .fontWeight(.medium)
-                                Spacer()
-                            }
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                withAnimation(.easeInOut) {
-                                    infoExpanded.toggle()
-                                }
-                            }
-                        }
-                        .padding(14)
-                        .background(glassBackground)
-                        
-                       
-                    }
-                    //                    .padding(18)
-                    .padding(.horizontal, 18)  // no top padding
-                    .padding(.bottom, 18)  // Extra bottom padding to ensure scrolling works properly
-                }
-                
-                // Download button
-                VStack(spacing: 6) {
-                    Button {
-                        if isDownloading {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                stopDownload()
-                            }
-                        } else {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                startDownload()
-                            }
-                        }
-                    } label: {
-                        HStack {
-                            Spacer()
-                            if isDownloading {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(
-                                        .system(
-                                            size: 15,
-                                            weight: .medium
-                                        )
-                                    )
-                                Text("Cancel Download")
-                                    .font(
-                                        .system(
-                                            size: 15,
-                                            weight: .semibold
-                                        )
-                                    )
-                            } else {
-                                Image(
-                                    systemName: "arrow.down.circle.fill"
-                                )
-                                .font(
-                                    .system(size: 15, weight: .medium)
-                                )
-                                Text("Download")
-                                    .font(
-                                        .system(
-                                            size: 15,
-                                            weight: .semibold
-                                        )
-                                    )
-                            }
-                            Spacer()
-                        }
-                        .padding(.vertical, 14)
-                        .background(
-                            ZStack {
+                        .scrollContentBackground(.hidden)
+                        .scrollIndicators(.never)
+                        // End ScrollView
+                        // Download button
+                        VStack(spacing: 6) {
+                            Button {
                                 if isDownloading {
-                                    LinearGradient(
-                                        gradient: Gradient(colors: [
-                                            Color.gray.opacity(0.8),
-                                            Color.gray.opacity(0.6),
-                                        ]),
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
+                                    withAnimation(.easeInOut(duration: 0.2)) { stopDownload() }
                                 } else {
-                                    brandGradient
+                                    withAnimation(.easeInOut(duration: 0.2)) { startDownload() }
                                 }
+                            } label: {
+                                HStack {
+                                    Spacer()
+                                    if isDownloading {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 15, weight: .medium))
+                                        Text("Cancel Download")
+                                            .font(.system(size: 15, weight: .semibold))
+                                    } else {
+                                        Image(systemName: "arrow.down.circle.fill")
+                                            .font(.system(size: 15, weight: .medium))
+                                        Text("Download")
+                                            .font(.system(size: 15, weight: .semibold))
+                                    }
+                                    Spacer()
+                                }
+                                .padding(.vertical, 14)
                             }
-                            .clipShape(
-                                RoundedRectangle(
-                                    cornerRadius: 12,
-                                    style: .continuous
-                                )
-                            )
-                        )
-                        .foregroundColor(.white)
-                        .shadow(
-                            color: isDownloading
-                                ? Color.gray.opacity(0.3)
-                                : Color.red.opacity(0.4),
-                            radius: 6,
-                            x: 0,
-                            y: 3
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(videoURL.isEmpty && !isDownloading)
-                    .opacity(
-                        videoURL.isEmpty && !isDownloading ? 0.6 : 1.0
-                    )
+                            .buttonStyle(.glassProminent)
+                            .tint(.red)
+                            .disabled(videoURL.isEmpty && !isDownloading)
+                            .opacity(videoURL.isEmpty && !isDownloading ? 0.6 : 1.0)
 
-                    // Status indicator
-                    HStack(spacing: 10) {
-                        if isDownloading {
-                            ProgressView()
-                                .scaleEffect(0.5)
-                                .frame(width: 16, height: 16)
-                        } else {
-                            Image(systemName: "circle.fill")
-                                .foregroundColor(
-                                    downloadStatus == "Idle"
-                                        ? .green
-                                        : downloadStatus.contains(
-                                            "completed"
-                                        ) ? .green : .orange
-                                )
-                                .font(.system(size: 8))
+                            // Status indicator
+                            HStack(spacing: 10) {
+                                if isDownloading {
+                                    ProgressView()
+                                        .scaleEffect(0.5)
+                                        .frame(width: 16, height: 16)
+                                } else {
+                                    Image(systemName: "circle.fill")
+                                        .foregroundColor(
+                                            downloadStatus == "Idle"
+                                                ? .green
+                                                : downloadStatus.contains("completed") ? .green : .orange
+                                        )
+                                        .font(.system(size: 8))
+                                }
+                                Text(downloadStatus)
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                                    .lineLimit(2)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .frame(height: 60)
+                            .animation(.easeInOut(duration: 0.2), value: isDownloading)
                         }
-
-                        // Status text
-                        Text(downloadStatus)
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                            .lineLimit(2)
-                            .fixedSize(
-                                horizontal: false,
-                                vertical: true
-                            )
+                        .padding(.top, 8)
+                        .padding(.horizontal, 18)
                     }
-                    .frame(height: 60)
-                    .animation(
-                        .easeInOut(duration: 0.2),
-                        value: isDownloading
-                    )
+                    .frame(width: 460, height: 700)
                 }
-                .padding(.top, 8)
-                .padding(.horizontal, 18)
-            }
-            .scrollIndicators(.never)
-            .frame(width: 460, height: 700)
-        }
-        .tint(.red)
-        .onChange(of: downloadType.wrappedValue) { oldType, newType in
-            if newType != .audio {
-                selectedAudioFormat = "source"
+                .onChange(of: downloadType.wrappedValue) { oldType, newType in
+                    if newType != .audio {
+                        selectedAudioFormat = "source"
+                    }
+                }
+            } else {
+                // Fallback UI for older macOS
+                ZStack {
+                    VStack(spacing: 0) {
+                        Color.clear.frame(height: 1)
+                        ScrollView {
+                            VStack(alignment: .center, spacing: 14) {
+                                // URL Field
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Media URL")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                    HStack {
+                                        Image(systemName: "link")
+                                            .foregroundColor(.secondary)
+                                            .padding(.leading, 10)
+                                        TextField(
+                                            "Enter video/playlist URL",
+                                            text: $videoURL
+                                        )
+                                        .textFieldStyle(.plain)
+                                        .padding(.vertical, 10)
+                                        if !videoURL.isEmpty {
+                                            Button(action: { videoURL = "" }) {
+                                                Image(systemName: "xmark.circle.fill")
+                                                    .foregroundColor(.secondary)
+                                            }
+                                            .buttonStyle(.plain)
+                                            .padding(.trailing, 10)
+                                        }
+                                    }
+                                    .background(
+                                                Color.clear.background(.ultraThinMaterial)
+                                            
+                                    )
+                                    .cornerRadius(10)
+                                    .frame(height: 38)
+                                }
+                                .padding(.top, 8)
+
+                                // Destination folder
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Save Location")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                    HStack(spacing: 8) {
+                                        HStack {
+                                            Image(systemName: "folder")
+                                                .foregroundColor(.secondary)
+                                                .padding(.leading, 10)
+                                            Text(destinationFolder.relativePath)
+                                                .lineLimit(1)
+                                                .truncationMode(.middle)
+                                                .padding(.vertical, 10)
+                                            Spacer()
+                                        }
+                                        Button(action: selectFolder) {
+                                            Text("Change")
+                                                .fontWeight(.medium)
+                                        }
+                                        .frame(width: 59)
+                                        .buttonStyle(.bordered)
+                                        .tint(.primary)
+                                    }
+                                    .background(
+                                                Color.clear.background(.ultraThinMaterial)
+                                      
+                                    )
+                                    .cornerRadius(10)
+                                    .frame(height: 38)
+                                }
+
+                                // Download Type Selector
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Download Type")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                    HStack(spacing: 2) {
+                                        ForEach(DownloadType.allCases) { type in
+                                            Button(action: {
+                                                withAnimation(.spring(response: 0.3)) {
+                                                    downloadType.wrappedValue = type
+                                                }
+                                            }) {
+                                                Text(type.rawValue)
+                                                    .fontWeight(.medium)
+                                                    .frame(maxWidth: .infinity)
+                                                    .padding(.vertical, 8)
+                                            }
+                                            .buttonStyle(.bordered)
+                                            .tint(.red)
+                                        }
+                                    }
+                                    .padding(3)
+                                    .animation(.spring(response: 0.3), value: downloadType.wrappedValue)
+                                    .background(
+                                        Group {
+                                                Color.clear.background(.ultraThinMaterial)
+                                        }
+                                    )
+                                    .cornerRadius(10)
+                                }
+
+                                // Video & Audio Options
+                                VStack(alignment: .leading, spacing: 10) {
+                                    if downloadType.wrappedValue != .audio {
+                                        VStack(alignment: .leading, spacing: 10) {
+                                            Text("Video Options")
+                                                .font(.subheadline)
+                                                .foregroundColor(.secondary)
+                                            GlassPickerView(
+                                                title: "Resolution",
+                                                options: resolutionOptions.map { "\($0)p" },
+                                                selection: Binding(
+                                                    get: { "\(selectedResolution)p" },
+                                                    set: { selectedResolution = $0.replacingOccurrences(of: "p", with: "") }
+                                                )
+                                            )
+                                            GlassPickerView(
+                                                title: "Container",
+                                                options: videoFormatOptions.map { $0.uppercased() },
+                                                selection: Binding(
+                                                    get: { selectedVideoFormat.uppercased() },
+                                                    set: { selectedVideoFormat = $0.lowercased() }
+                                                )
+                                            )
+                                        }
+                                        .padding(16)
+                                        .background(
+                                            Group {
+                                                    Color.clear.background(.ultraThinMaterial)
+                                       
+                                            }
+                                        )
+                                        .cornerRadius(12)
+                                        .transition(.asymmetric(
+                                            insertion: .scale(scale: 0.95).combined(with: .opacity),
+                                            removal: .scale(scale: 0.95).combined(with: .opacity)
+                                        ))
+                                    }
+                                    if downloadType.wrappedValue != .video {
+                                        VStack(alignment: .leading, spacing: 16) {
+                                            Text("Audio Options")
+                                                .font(.subheadline)
+                                                .foregroundColor(.secondary)
+                                            GlassPickerView(
+                                                title: "Quality",
+                                                options: audioQualityOptions.map { $0.label },
+                                                selection: Binding(
+                                                    get: {
+                                                        audioQualityOptions.first(where: { $0.value == selectedAudioQuality })?.label ?? ""
+                                                    },
+                                                    set: { newLabel in
+                                                        if let option = audioQualityOptions.first(where: { $0.label == newLabel }) {
+                                                            selectedAudioQuality = option.value
+                                                        }
+                                                    }
+                                                )
+                                            )
+                                            if downloadType.wrappedValue == .audio {
+                                                GlassPickerView(
+                                                    title: "Format",
+                                                    options: audioFormatOptions.map { $0.label },
+                                                    selection: Binding(
+                                                        get: {
+                                                            audioFormatOptions.first(where: { $0.value == selectedAudioFormat })?.label ?? ""
+                                                        },
+                                                        set: { newLabel in
+                                                            if let option = audioFormatOptions.first(where: { $0.label == newLabel }) {
+                                                                selectedAudioFormat = option.value
+                                                            }
+                                                        }
+                                                    )
+                                                )
+                                            }
+                                        }
+                                        .padding(16)
+                                        .background(
+                                            Group {
+                                                    Color.clear.background(.ultraThinMaterial)
+                                         
+                                            }
+                                        )
+                                        .cornerRadius(12)
+                                        .transition(.asymmetric(
+                                            insertion: .scale(scale: 0.95).combined(with: .opacity),
+                                            removal: .scale(scale: 0.95).combined(with: .opacity)
+                                        ))
+                                    }
+                                }
+                                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: downloadType.wrappedValue)
+
+                                // Information Disclosure
+                                DisclosureGroup(isExpanded: $infoExpanded) {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        InfoRow(
+                                            icon: "arrow.triangle.2.circlepath",
+                                            title: "Persistent defaults",
+                                            description: "Every choice here becomes your new default, and carries over to the menu‑bar pop‑over."
+                                        )
+                                        InfoRow(
+                                            icon: "video.fill",
+                                            title: "Video formats and quality",
+                                            description: "In Video modes, the highest-quality video track up to your selected resolution is fetched and packaged in your chosen container."
+                                        )
+                                        InfoRow(
+                                            icon: "music.note",
+                                            title: "Audio format and quality",
+                                            description: "'Up to' will select the highest-quality audio stream whose bitrate is at or below X kbps."
+                                        )
+                                        InfoRow(
+                                            icon: "arrow.triangle.swap",
+                                            title: "Transcoding",
+                                            description: "Only runs when you choose a different format: picking 'Source' uses the source directly."
+                                        )
+                                        InfoRow(
+                                            icon: "eye.slash",
+                                            title: "Hide & show",
+                                            description: "Closing the window hides it (and the Dock icon); click the menu‑bar icon to bring it back."
+                                        )
+                                    }
+                                    .padding(.top, 6)
+                                } label: {
+                                    HStack {
+                                        Text("Information")
+                                            .fontWeight(.medium)
+                                        Spacer()
+                                    }
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        withAnimation(.easeInOut) {
+                                            infoExpanded.toggle()
+                                        }
+                                    }
+                                }
+                                .padding(14)
+                                .background(
+                                    Group {
+                                            Color.clear.background(.ultraThinMaterial)
+                                   
+                                    }
+                                )
+                                .cornerRadius(8)
+                            }
+                            .padding(.horizontal, 18)
+                            .padding(.bottom, 18)
+                        }
+                        // Download button
+                        VStack(spacing: 6) {
+                            Button {
+                                if isDownloading {
+                                    withAnimation(.easeInOut(duration: 0.2)) { stopDownload() }
+                                } else {
+                                    withAnimation(.easeInOut(duration: 0.2)) { startDownload() }
+                                }
+                            } label: {
+                                HStack {
+                                    Spacer()
+                                    if isDownloading {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 15, weight: .medium))
+                                        Text("Cancel Download")
+                                            .font(.system(size: 15, weight: .semibold))
+                                    } else {
+                                        Image(systemName: "arrow.down.circle.fill")
+                                            .font(.system(size: 15, weight: .medium))
+                                        Text("Download")
+                                            .font(.system(size: 15, weight: .semibold))
+                                    }
+                                    Spacer()
+                                }
+                                .padding(.vertical, 14)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.red)
+                            .disabled(videoURL.isEmpty && !isDownloading)
+                            .opacity(videoURL.isEmpty && !isDownloading ? 0.6 : 1.0)
+
+                            // Status indicator
+                            HStack(spacing: 10) {
+                                if isDownloading {
+                                    ProgressView()
+                                        .scaleEffect(0.5)
+                                        .frame(width: 16, height: 16)
+                                } else {
+                                    Image(systemName: "circle.fill")
+                                        .foregroundColor(
+                                            downloadStatus == "Idle"
+                                                ? .green
+                                                : downloadStatus.contains("completed") ? .green : .orange
+                                        )
+                                        .font(.system(size: 8))
+                                }
+                                Text(downloadStatus)
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                                    .lineLimit(2)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .frame(height: 60)
+                            .animation(.easeInOut(duration: 0.2), value: isDownloading)
+                        }
+                        .padding(.top, 8)
+                        .padding(.horizontal, 18)
+                    }
+                    .frame(width: 460, height: 700)
+                }
+                .onChange(of: downloadType.wrappedValue) { oldType, newType in
+                    if newType != .audio {
+                        selectedAudioFormat = "source"
+                    }
+                }
             }
         }
     }
@@ -846,17 +875,11 @@ struct GlassPickerView: View {
                     .padding(.vertical, 8)
                     .background(
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(.ultraThinMaterial)
-                            .overlay(
-                                RoundedRectangle(
-                                    cornerRadius: 10,
-                                    style: .continuous
-                                )
-                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                            )
+                            .glassEffect()
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.glass)
+                .tint(.primary)
 
                 if isExpanded {
                     VStack(spacing: 0) {
@@ -910,7 +933,8 @@ struct GlassPickerView: View {
                                     )
                                 )
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.glass)
+                            .tint(.primary)
 
                             if option != options.last {
                                 Divider().padding(.horizontal, 8)
@@ -922,14 +946,7 @@ struct GlassPickerView: View {
                     }
                     .background(
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(.ultraThinMaterial)
-                            .overlay(
-                                RoundedRectangle(
-                                    cornerRadius: 10,
-                                    style: .continuous
-                                )
-                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                            )
+                            .glassEffect()
                             .shadow(
                                 color: Color.black.opacity(0.15),
                                 radius: 8,
