@@ -765,21 +765,24 @@ struct MainAppView: View {
         proc.standardError = pipe
         pipe.fileHandleForReading.readabilityHandler = { h in
             let d = h.availableData
+            guard !d.isEmpty else {
+                h.readabilityHandler = nil
+                return
+            }
+
             if let s = String(data: d, encoding: .utf8),
                 !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             {
                 DispatchQueue.main.async {
-                    downloadStatus = s.trimmingCharacters(
-                        in: .whitespacesAndNewlines
-                    )
+                    downloadStatus = s.trimmingCharacters(in: .whitespacesAndNewlines)
                 }
             }
         }
         proc.terminationHandler = { p in
+            pipe.fileHandleForReading.readabilityHandler = nil
             DispatchQueue.main.async {
                 isDownloading = false
-                downloadStatus =
-                    p.terminationStatus == 0
+                downloadStatus = p.terminationStatus == 0
                     ? "Download completed."
                     : "Download failed (code \(p.terminationStatus))."
             }
