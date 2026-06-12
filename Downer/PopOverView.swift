@@ -263,7 +263,13 @@ struct PopOverView: View {
         proc.standardOutput = pipe
         proc.standardError = pipe
         pipe.fileHandleForReading.readabilityHandler = { h in
-            if let s = String(data: h.availableData, encoding: .utf8)?
+            let data = h.availableData
+            guard !data.isEmpty else {
+                h.readabilityHandler = nil
+                return
+            }
+
+            if let s = String(data: data, encoding: .utf8)?
                 .trimmingCharacters(in: .whitespacesAndNewlines),
                 !s.isEmpty
             {
@@ -271,6 +277,7 @@ struct PopOverView: View {
             }
         }
         proc.terminationHandler = { p in
+            pipe.fileHandleForReading.readabilityHandler = nil
             DispatchQueue.main.async {
                 isDownloading = false
                 downloadStatus =
