@@ -1,0 +1,7 @@
+version: 2
+updates:
+  # Keeps the KeyboardShortcuts package up to date.
+  - package-ecosystem: "swift"
+    directory: "/"
+    schedule:
+      interval: "weekly"
