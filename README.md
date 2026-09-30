@@ -103,7 +103,7 @@ Closing the window hides it (and the Dock icon). Click the menu bar icon to brin
 
 Head to the [GitHub Releases](https://github.com/dsameendra/Downer/releases) page and download the latest `.dmg`.
 
-- Open the `.dmg` and drag `Downer.app` into your `/Applications` folder.
+- Open the `.dmg`. A window appears with Downer and your Applications folder: drag **Downer** onto **Applications**.
 - Open **Settings → Requirements** and press **Install** next to anything that is missing. (`ffmpeg` needs [Homebrew](https://brew.sh). You can also run `brew install yt-dlp ffmpeg` yourself.)
 
 ### 2. Allow the app to run
@@ -162,6 +162,14 @@ The first time Downer saves into a protected folder such as Downloads, macOS ask
 2. In the Organizer choose **Distribute App → Custom → Copy App**.
 3. Copy the exported `Downer.app` into `/Applications`.
 
+### Making a release build
+
+```bash
+./scripts/make-dmg.sh
+```
+
+This builds a universal Release app, signs it ad hoc, draws the installer window and writes `dist/Downer-<version>.dmg` with a checksum next to it. It needs Xcode and Python 3; the DMG tool is installed into `dist/.venv` the first time.
+
 ### How it is put together
 
 | File | Role |
@@ -174,6 +182,7 @@ The first time Downer saves into a protected folder such as Downloads, macOS ask
 | `DesignSystem.swift` | Liquid Glass, materials, motion, buttons and window chrome |
 | `MenuBarIcon.swift` | The menu bar icon and its states, drawn in code |
 | `Downer.icon` | The layered app icon |
+| `scripts/make-dmg.sh` | Builds the signed, universal installer DMG (`scripts/dmg` holds its window design) |
 
 See [`PRODUCT.md`](PRODUCT.md) for who Downer is for and [`DESIGN.md`](DESIGN.md) for the design decisions behind it.
 
