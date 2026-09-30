@@ -22,12 +22,21 @@ final class DownloadManager: ObservableObject {
     @Published private(set) var completions = 0
     /// The file the last successful download produced, for "Show in Finder".
     @Published private(set) var lastFile: URL?
+    /// Every file the last run produced (a playlist makes several).
+    @Published private(set) var lastFiles: [URL] = []
+    /// Set only while or after a playlist run. Single videos never set it.
+    @Published private(set) var playlist: PlaylistProgress?
+    /// True when the last run failed, so the menu bar icon can ask for attention.
+    @Published private(set) var hadError = false
 
     private var process: Process?
     private var idleTask: Task<Void, Never>?
     private var lastErrorLine: String?
     private var wasCancelled = false
     private var pathFile: URL?
+    private var tracker = PlaylistTracker()
+    private var lastURL: String?
+    private var retryMap: [Int]?
 
     private init() {}
 
@@ -51,9 +60,28 @@ final class DownloadManager: ObservableObject {
 
     // MARK: Control
     func start(url rawURL: String) {
+        start(url: rawURL, retrying: nil)
+    }
+
+    /// Download again only the failed items of the last playlist.
+    func retryFailed() {
+        guard let url = lastURL, let failed = playlist?.failed.map(\.id), !failed.isEmpty else { return }
+        start(url: url, retrying: failed)
+    }
+
+    /// Clear the playlist summary once a run is over.
+    func dismissPlaylist() {
+        guard !isDownloading else { return }
+        playlist = nil
+        hadError = false
+        status = "Idle"
+    }
+
+    private func start(url rawURL: String, retrying: [Int]?) {
         let url = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !url.isEmpty, !isDownloading else { return }
         idleTask?.cancel()
+        hadError = false
 
         let fm = FileManager.default
         let ytDlp = Tool.ytDlp
@@ -80,6 +108,7 @@ final class DownloadManager: ObservableObject {
         self.pathFile = pathFile
         args += ["--print-to-file", "after_move:filepath", pathFile.path]
         args += ["--newline", "--ffmpeg-location", (ffmpegPath as NSString).deletingLastPathComponent]
+        if let retrying { args += ["--playlist-items", retrying.map(String.init).joined(separator: ",")] }
         args.append(url)
 
         let proc = Process()
@@ -116,6 +145,11 @@ final class DownloadManager: ObservableObject {
 
         wasCancelled = false
         lastFile = nil
+        lastFiles = []
+        lastURL = url
+        retryMap = retrying
+        tracker = retrying == nil ? PlaylistTracker() : PlaylistTracker(retrying: retrying, keeping: playlist)
+        if retrying == nil { playlist = nil }
         lastErrorLine = nil
         progress = nil
         status = "Starting download…"
@@ -131,8 +165,12 @@ final class DownloadManager: ObservableObject {
     }
 
     func revealLastFile() {
-        guard let lastFile else { return }
-        NSWorkspace.shared.activateFileViewerSelecting([lastFile])
+        let files = lastFiles.isEmpty ? lastFile.map { [$0] } ?? [] : lastFiles
+        if files.isEmpty {
+            NSWorkspace.shared.open(destinationFolder)
+        } else {
+            NSWorkspace.shared.activateFileViewerSelecting(files)
+        }
     }
 
     func cancel() {
@@ -182,51 +220,123 @@ final class DownloadManager: ObservableObject {
         let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if line.hasPrefix("ERROR") { lastErrorLine = line }
 
+        let hadPlaylist = playlist != nil
+        tracker.consume(line)
+        if tracker.progress != playlist { playlist = tracker.progress }
+        if !hadPlaylist, playlist != nil, let url = lastURL { fetchTitles(for: url) }
+
         // "[download]  42.3% of  120.00MiB at  3.20MiB/s ETA 00:24"
         if line.hasPrefix("[download]"), let pct = Self.percent(in: line) {
-            progress = pct / 100
-            var text = "Downloading \(Int(pct.rounded()))%"
-            if let speed = Self.value(after: " at ", in: line) { text += " · \(speed)" }
-            if let eta = Self.value(after: "ETA ", in: line) { text += " · \(eta) left" }
-            status = text
+            if let playlist {
+                progress = playlist.overall
+                let current = playlist.current.map { "Item \($0) of \(playlist.total)" } ?? "Playlist"
+                var text = "\(current) · \(Int(pct.rounded()))%"
+                if let speed = playlist.speed { text += " · \(speed)" }
+                status = text
+            } else {
+                progress = pct / 100
+                var text = "Downloading \(Int(pct.rounded()))%"
+                if let speed = Self.value(after: " at ", in: line) { text += " · \(speed)" }
+                if let eta = Self.value(after: "ETA ", in: line) { text += " · \(eta) left" }
+                status = text
+            }
             return
         }
+        // Only yt-dlp's own tagged lines are worth showing; ffmpeg chatter is not.
+        guard line.hasPrefix("[") else { return }
         if line.hasPrefix("[Merger]") || line.hasPrefix("[VideoRemuxer]") {
-            progress = nil
+            if playlist == nil { progress = nil }
             status = "Merging…"
         } else if line.hasPrefix("[ExtractAudio]") {
-            progress = nil
+            if playlist == nil { progress = nil }
             status = "Converting audio…"
+        } else if line.hasPrefix("[download] Downloading item"), let playlist, let current = playlist.current {
+            progress = playlist.overall
+            status = "Item \(current) of \(playlist.total)"
+        } else if line.hasPrefix("[download]") || line.contains("%(filepath)s") {
+            return
         } else if line.hasPrefix("Deleting original file") {
             status = "Finishing…"
-        } else if !line.hasPrefix("[download]") && !line.contains("%(filepath)s") {
+        } else if playlist == nil {
             status = line
         }
+    }
+
+    /// Ask yt-dlp for the playlist's titles so every queued row has a name.
+    private func fetchTitles(for url: String) {
+        let ytDlpPath = string(Tool.ytDlp.defaultsKey, Tool.ytDlp.defaultPath)
+        let only = retryMap
+        Task.detached { [weak self] in
+            let proc = Process()
+            proc.executableURL = URL(fileURLWithPath: ytDlpPath)
+            var args = ["--flat-playlist", "--print", "%(title)s", "--no-warnings"]
+            if let only { args += ["--playlist-items", only.map(String.init).joined(separator: ",")] }
+            args.append(url)
+            proc.arguments = args
+            let pipe = Pipe()
+            proc.standardOutput = pipe
+            proc.standardError = Pipe()
+            guard (try? proc.run()) != nil else { return }
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            proc.waitUntilExit()
+            let titles = (String(data: data, encoding: .utf8) ?? "")
+                .split(whereSeparator: \.isNewline).map(String.init)
+            guard !titles.isEmpty else { return }
+            await self?.applyTitles(titles)
+        }
+    }
+
+    private func applyTitles(_ titles: [String]) {
+        tracker.setTitles(titles)
+        playlist = tracker.progress
     }
 
     private func finished(code: Int32) {
         process = nil
         isDownloading = false
         progress = nil
+        tracker.finish(exitCode: code, cancelled: wasCancelled)
+        if tracker.progress != nil { playlist = tracker.progress }
+        let files = pathFile
+            .flatMap { try? String(contentsOf: $0, encoding: .utf8) }?
+            .split(whereSeparator: \.isNewline).map { URL(fileURLWithPath: String($0)) } ?? []
         defer { if let pathFile { try? FileManager.default.removeItem(at: pathFile) } }
+        if !files.isEmpty { lastFiles = (retryMap == nil ? [] : lastFiles) + files }
+
         if wasCancelled {
             status = "Download cancelled."
+        } else if let playlist {
+            let failed = playlist.failed.count
+            lastFile = lastFiles.last
+            if failed == 0 && code == 0 {
+                status = "Playlist completed."
+                completions += 1
+            } else if playlist.doneCount == 0 {
+                hadError = true
+                status = "Download failed (code \(code))."
+                return
+            } else {
+                hadError = failed > 0
+                status = "\(playlist.doneCount) of \(playlist.total) downloaded · \(failed) failed"
+                if failed == 0 { completions += 1 }
+                return  // keep the summary on screen
+            }
         } else if code == 0 {
             status = "Download completed."
             completions += 1
-            lastFile = pathFile
-                .flatMap { try? String(contentsOf: $0, encoding: .utf8) }?
-                .split(whereSeparator: \.isNewline).last
-                .map { URL(fileURLWithPath: String($0)) }
+            lastFile = files.last
+            lastFiles = files
         } else {
             let detail = lastErrorLine.map { "\n" + String($0.prefix(140)) } ?? ""
             status = "Download failed (code \(code))." + detail
+            hadError = true
             return  // keep the error on screen until the next attempt
         }
         scheduleIdle()
     }
 
     private func fail(_ message: String) {
+        hadError = true
         status = message
         isDownloading = false
         progress = nil
