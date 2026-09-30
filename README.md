@@ -8,7 +8,8 @@
 - Choose from popular **resolutions** and **formats**
 - Pick your **destination folder**
 - Settings are **persisted** and shared between the main app and the menubar popover
-- Minimal and clean **native macOS UI** with red-accent styling and dark mode support
+- **Liquid Glass** native macOS UI (macOS 26+, with a material fallback on macOS 14–15), red accent, light, dark or device appearance, and an optional background glow
+- **Set up from Settings**: Downer checks for `yt-dlp`, `ffmpeg` and `ffprobe` and can install them for you
 
 <table align="center" style="border: none; border-collapse: collapse;">
 <!--   <thead>
@@ -63,7 +64,7 @@ All preferences are remembered across launches.
 Head over to the [GitHub Releases](https://github.com/dsameendra/Downer/releases) page and download the latest `.dmg` file.
 
 - Open the `.dmg` and drag `Downer.app` into your `/Applications` folder.
-- Make sure `yt-dlp` and `ffmpeg` is installed. If not install with `brew install yt-dlp ffmpeg`. 
+- `yt-dlp` and `ffmpeg` are required. If they are missing, open **Settings → Requirements** and press **Install** (ffmpeg needs [Homebrew](https://brew.sh); or run `brew install yt-dlp ffmpeg` yourself).
 
 ---
 
