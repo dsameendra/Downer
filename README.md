@@ -1,134 +1,183 @@
-# Downer — Video Downloader for macOS
+<div align="center">
 
-**Downer** is a lightweight, native macOS app that lets you download your videos or audio from YT and more with just a few clicks. It lives in your **menubar** for quick access and also offers a full-featured main window.
+<img src="docs/screenshots/app-icon.png" alt="Downer app icon" width="128"/>
 
-## ✨ Features
+# Downer
 
-- Download **video + audio**, **audio-only**, or **video-only**
-- Choose from popular **resolutions** and **formats**
-- Pick your **destination folder**
-- Settings are **persisted** and shared between the main app and the menubar popover
-- **Liquid Glass** native macOS UI (macOS 26+, with a material fallback on macOS 14–15), red accent, light, dark or device appearance, and an optional background glow
-- **Set up from Settings**: Downer checks for `yt-dlp`, `ffmpeg` and `ffprobe` and can install them for you
+**A native macOS app for downloading video and audio. Paste a link, add as many more as you like, and let Downer work through them in order.**
 
-<table align="center" style="border: none; border-collapse: collapse;">
-<!--   <thead>
-    <tr>
-      <th align="center" style="padding: 8px; border: none;">App</th>
-      <th align="center" style="padding: 8px; border: none;">Menubar Popover</th>
-    </tr>
-  </thead> -->
-  <tbody>
-    <tr>
-	<td align="center" valign="top" style="border: none;">
-		Darkmode
-		<br>
-		<img src="https://imgur.com/HJsr9dk.png" alt="Downer App Screenshot" width="300"/>
-	</td>
-	<td align="center" valign="top" style="border: none;">
-		Lightmode
-		<br>
-        	<img src="https://imgur.com/13WYeoy.png" alt="Downer App Lightmode Screenshot" width="300"/>
-     	</td>
-   </tr>
-   <tr>
-       	<td align="center" valign="top" style="border: none;">
-		Menubar App
-		<br>
-        	<img src="https://imgur.com/DqHR9HI.png" alt="Downer Menubar Screenshot" width="300"/>
-      	</td>
-      	<td align="center" valign="top" style="border: none;">
-		Settings
-		<br>
-        	<img src="https://imgur.com/NTuM6in.png" alt="Downer Settings Screenshot" width="300"/>
-      </td>
-   </tr>
-  </tbody>
+Built for macOS 26 with Liquid Glass. Works on macOS 14 and later.
+
+<img src="docs/screenshots/main-dark.png" alt="Downer main window in dark mode" width="300"/>&nbsp;&nbsp;<img src="docs/screenshots/queue-dark.png" alt="Downer download queue with a playlist in progress" width="300"/>
+
+</div>
+
+## What's new in 2.0
+
+- **Liquid Glass design.** Real glass on macOS 26 and later, a refined material look on macOS 14 and 15, and solid surfaces when Reduce Transparency is on.
+- **A download queue.** Add a video, a playlist, or several of each while something is already downloading. Everything is looked up first, then downloaded one after another.
+- **Playlists done properly.** A playlist shows up as a group with one row per video, each with its own progress. Failed videos can be retried on their own.
+- **Real progress.** A true progress bar and percentage, speed and time left, instead of raw tool output.
+- **Set up from Settings.** Downer finds `yt-dlp`, `ffmpeg` and `ffprobe`, and can install them for you.
+- **A smarter menu bar.** A new icon that fills with progress and shows the queue count, plus a global shortcut that opens the popover with your copied link already filled in.
+- **A new app icon** built in layers for Liquid Glass, with dark, clear and tinted looks.
+- **Appearance options.** Follow the device, or choose light or dark, and turn the background glow on or off.
+
+## Features
+
+### Downloading
+
+- Download **video + audio**, **audio only**, or **video only**.
+- Choose the **resolution** (from 240p up to 8K, capped at what the video offers), the **container** (MP4, MKV or WebM), the **audio quality** (best available, or capped at 128, 70 or 50 kbps), and the **audio format** (keep the source, or convert to MP3, AAC or Opus).
+- Pick where files are saved. Every choice is remembered, and shared between the window and the menu bar.
+- Each queued link keeps the settings it was added with, so changing a setting later never affects links that are already waiting.
+
+### The queue
+
+- **Add at any time.** Paste a link and press Return, or press **Add to Queue**. The field clears so you can paste the next one. Pasting several links at once adds them all.
+- **Mix freely.** Single videos, playlists, or any combination. Links that are not valid, or are already in the queue, are ignored politely.
+- **One at a time, in order.** Downloads run strictly one after another, so your connection and your disk are never hammered.
+- **A tray that comes up from the bottom.** With more than one link, or a playlist, the download area becomes a tray. Drag the handle up to see every link and every video, drag it back down to tuck it away. Tap the header to toggle.
+- **Control each item.** Remove a waiting link, cancel the one running, cancel everything, retry what failed, or clear what finished.
+- **Automatic retry.** A network hiccup (for example an HTTP error) is retried once on its own. Links that are genuinely unavailable are not.
+- **Show in Finder** reveals every file the queue produced.
+
+### Menu bar and shortcut
+
+- Downer lives in the menu bar. Click the icon for a compact popover with a link field and a Download button.
+- Set a **global shortcut** in Settings. Copy a link anywhere, press the shortcut, and the popover opens with the link already filled in. Press Return to start.
+
+<div align="center">
+<img src="docs/screenshots/popover-dark.png" alt="The menu bar popover with a copied link filled in" width="320"/>
+</div>
+
+| Menu bar icon | Meaning |
+|---|---|
+| Double chevron | Idle |
+| Ring with a percentage | Downloading one video |
+| Ring with `3/12` | Downloading from a queue or a playlist (video 3 of 12) |
+| Check mark | Finished (shown for a couple of seconds) |
+| Orange dot | Something needs attention: a tool is missing, or a download failed |
+
+<div align="center">
+<img src="docs/screenshots/menubar-icons.png" alt="Menu bar icon states on a dark and a light menu bar" width="560"/>
+</div>
+
+### Settings
+
+<div align="center">
+<img src="docs/screenshots/settings-dark.png" alt="Downer settings" width="300"/>
+</div>
+
+- **Appearance:** Device, Light or Dark, and an optional background glow.
+- **Global shortcut:** record any key combination.
+- **Requirements:** shows whether `yt-dlp`, `ffmpeg` and `ffprobe` are installed, and their versions. Missing tools have an **Install** button.
+  - With Homebrew installed, Downer runs `brew install` for you.
+  - Without Homebrew, `yt-dlp` is downloaded from its official release into Downer's own folder. `ffmpeg` needs Homebrew, and Downer will tell you so.
+  - Already installed somewhere else? Use **Browse…** to point Downer at it.
+
+## Screenshots
+
+<table align="center">
+  <tr>
+    <td align="center"><img src="docs/screenshots/main-light.png" width="280" alt="Main window, light"/><br/>Light mode</td>
+    <td align="center"><img src="docs/screenshots/queue-peek.png" width="280" alt="Queue tray peeking"/><br/>The tray, tucked away</td>
+    <td align="center"><img src="docs/screenshots/queue-light.png" width="280" alt="Queue tray open, light"/><br/>The tray, open, in light mode</td>
+  </tr>
 </table>
 
-## 🚀 Usage
+## Using Downer
 
-1. Launch **Downer.app**  
-2. Paste a YouTube URL  
-3. Choose download type, resolution, format, etc.  
-4. Press **Download**  
-5. Watch status updates in real time  
-6. Right-click the **menu bar icon** to open or quit the app
+1. Open **Downer**, or click its menu bar icon.
+2. Paste a video or playlist link and press **Return**.
+3. Choose **Video + Audio**, **Audio Only** or **Video Only**, and the quality and format you want.
+4. While it downloads, paste more links. They join the queue.
+5. Drag the tray handle up whenever you want to see what is happening to each video.
+6. When the queue finishes, press **Show in Finder**.
 
-All preferences are remembered across launches.
+Closing the window hides it (and the Dock icon). Click the menu bar icon to bring it back, or right-click it for **Open Downer** and **Quit Downer**.
 
-## 💽 Installation Guide
+## Installation
 
-### 1. Download and Install the App
+### 1. Download and install
 
-Head over to the [GitHub Releases](https://github.com/dsameendra/Downer/releases) page and download the latest `.dmg` file.
+Head to the [GitHub Releases](https://github.com/dsameendra/Downer/releases) page and download the latest `.dmg`.
 
 - Open the `.dmg` and drag `Downer.app` into your `/Applications` folder.
-- `yt-dlp` and `ffmpeg` are required. If they are missing, open **Settings → Requirements** and press **Install** (ffmpeg needs [Homebrew](https://brew.sh); or run `brew install yt-dlp ffmpeg` yourself).
+- Open **Settings → Requirements** and press **Install** next to anything that is missing. (`ffmpeg` needs [Homebrew](https://brew.sh). You can also run `brew install yt-dlp ffmpeg` yourself.)
 
----
+### 2. Allow the app to run
 
-### 2. Allow the App to Run
+macOS may block the app, saying:
 
-macOS might block the app from launching, saying:
+> "Downer.app can't be opened."
 
-> “Downer.app can’t be opened.”
+This happens because the app is not signed with a paid Apple Developer account. You can allow it with Terminal:
 
-This happens because the app is not signed with a paid Apple Developer account. But you can manually allow it using Terminal. Follow the instructions below.
+1. Sign the app locally with an ad-hoc signature:
+   ```bash
+   codesign --force --deep --sign - /Applications/Downer.app
+   ```
+2. Remove the quarantine flag so macOS treats it as safe:
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/Downer.app
+   ```
 
-1. Sign the app locally with an ad-hoc signature
-```bash
-codesign --force --deep --sign - /Applications/Downer.app
-```
+### 3. Folder access
 
-2. Remove the quarantine flag so macOS treats it as safe
-```bash
-xattr -dr com.apple.quarantine /Applications/Downer.app
-```
+The first time Downer saves into a protected folder such as Downloads, macOS asks whether to allow it. Choose **Allow**. You can change this later in **System Settings → Privacy & Security → Files & Folders**.
 
-## 🔧 Building from Source
+## Troubleshooting
+
+| Problem | What to try |
+|---|---|
+| A "Setup needed" banner appears | Open Settings → Requirements and press Install next to what is missing. |
+| **Install** is greyed out for ffmpeg | Install [Homebrew](https://brew.sh) first, then try again. |
+| A video failed with an HTTP error | Downer retries these once automatically. If it still fails, press **Retry** on the row. |
+| A video says "unavailable" | The video is private, removed or restricted in your region. Retrying will not help. |
+| Nothing is saved | Check the **Save to** folder exists, and that Downer has permission to write to it. |
+| Downloads suddenly stop working for a site | Update the tool: `brew upgrade yt-dlp` (sites change often). |
+
+## Building from source
 
 ### Requirements
 
-- macOS 14+
-- Xcode
-- `yt-dlp`, `ffmpeg`, and `ffprobe` installed anywhere on disk  
-  - Homebrew: `brew install yt-dlp ffmpeg`  
-  - Or downloadable static binaries
+- macOS 14 or later to run. Xcode 26 or later to build, so the Liquid Glass APIs are available.
+- `yt-dlp`, `ffmpeg` and `ffprobe` installed anywhere on disk, or installed from Downer's Settings.
 
 ### Steps
 
-1. **Clone the repository**
-
+1. Clone the repository:
    ```bash
    git clone https://github.com/dsameendra/Downer.git
    cd Downer
-   ``` 
-2. Open `Downer.xcodeproj` in Xcode
-3. Set your personal signing team
-	1.	In the Project navigator, click Downer (the blue project icon).
-	2.	Select the Downer TARGET → Signing & Capabilities tab.
-	3.	From the Team dropdown choose your Apple‑ID team (or add one).
-Automatic signing is sufficient for local builds—Xcode will generate a
-debug profile and sign the bundle.
-4. Install the yt-dlp and ffmpeg command‑line dependencies (skip if you already have them).
-5. Build and run.
-7. First‑run setup
-	1.	Go to Settings → Tool Paths.
-	2.  Verify the paths to yt-dlp, ffmpeg, and ffprobe (Homebrew defaults should be auto‑detected).
-	3.  Choose a global shortcut if you like.
+   ```
+2. Open `Downer.xcodeproj` in Xcode. The [KeyboardShortcuts](https://github.com/sindresorhus/KeyboardShortcuts) package is fetched automatically.
+3. Choose your own signing team: select the **Downer** target, open **Signing & Capabilities**, and pick your team. Automatic signing is enough for local builds.
+4. Build and run.
 
-## 📦 Installing Locally
-If you're building the app yourself via Xcode, you can export and install it manually like this:
-1. In **Xcode**, go to `Product` → `Archive`
-2. Once the archive is complete, Xcode will open the **Organizer** window
-3. Click **Distribute App** → choose **Custom** → then **Copy App**
-4. Save the exported `.app` file to your desired location on disk
-5. Copy the `Downer.app` to your `/Applications` folder
+### Installing a local build
 
----
+1. In Xcode choose **Product → Archive**.
+2. In the Organizer choose **Distribute App → Custom → Copy App**.
+3. Copy the exported `Downer.app` into `/Applications`.
 
-## ⚠️ Disclaimer
+### How it is put together
+
+| File | Role |
+|---|---|
+| `DownloadManager.swift` | The queue: looks links up, runs `yt-dlp` one at a time, turns its output into progress |
+| `DownloadJob.swift` | One queued link and the settings it was added with |
+| `PlaylistModel.swift` | Follows a playlist run line by line (current video, progress, failures) |
+| `QueueTray.swift` | The draggable tray with every link and video |
+| `DependencyManager.swift` | Finds and installs `yt-dlp`, `ffmpeg` and `ffprobe` |
+| `DesignSystem.swift` | Liquid Glass, materials, motion, buttons and window chrome |
+| `MenuBarIcon.swift` | The menu bar icon and its states, drawn in code |
+| `Downer.icon` | The layered app icon |
+
+See [`PRODUCT.md`](PRODUCT.md) for who Downer is for and [`DESIGN.md`](DESIGN.md) for the design decisions behind it.
+
+## Disclaimer
 
 This tool is intended solely for personal use and educational or research purposes.
 

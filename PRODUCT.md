@@ -16,7 +16,7 @@ People who download video or audio from YouTube and similar sites and want it wi
 
 ## Product Purpose
 
-Downer is a lightweight native front end for yt-dlp and ffmpeg. Paste a URL, choose video+audio, audio-only or video-only, pick resolution, container, audio quality and destination, press Download. Success is a finished file in the chosen folder with as few decisions as possible.
+Downer is a lightweight native front end for yt-dlp and ffmpeg. Paste a link, choose video+audio, audio-only or video-only, pick resolution, container, audio quality and destination, press Download. While it runs, more links (single videos, playlists, or both) can be added; they queue and download in order. Success is a finished file in the chosen folder with as few decisions as possible.
 
 ## Positioning
 
@@ -24,14 +24,15 @@ Lives in the menu bar and a global shortcut, and shares one set of remembered de
 
 ## Operating Context
 
-- Main window is fixed at 460x700; closing it hides it and the Dock icon.
-- Menu bar popover is 360x180 and shares settings with the main window.
-- Settings window (400x300): global shortcut and tool paths (yt-dlp, ffmpeg, ffprobe, default /opt/homebrew/bin).
-- Status is a single text line (Idle, Starting download..., completed, path errors). No numeric progress is currently surfaced.
+- Main window is 460 pt wide with a fixed 640 pt of content below a taller, toolbar-height title bar; closing it hides it and the Dock icon.
+- Menu bar popover is 360x180 and shares settings and the queue with the main window. The global shortcut opens it and fills in a copied link.
+- Settings window (400 wide): appearance (theme, background glow), global shortcut, and requirements (yt-dlp, ffmpeg, ffprobe) with install.
+- Status is a single line (Idle, Checking link…, Downloading 42% · speed · time left, completed, errors). Real progress is parsed from yt-dlp output: per video, per playlist and across the whole queue.
 
 ## Capabilities and Constraints
 
 - Download types: Video + Audio, Audio only, Video only.
+- A queue: any number of links, added at any time, run one at a time in order. Each link keeps the settings it had when added. Playlists expand into one row per video with retry for failures. Network errors retry once automatically.
 - Video: resolution, container. Audio: quality (source, up to N kbps), format (source, MP3, AAC/M4A, Opus).
 - Persistent defaults via AppStorage; all existing behavior and copy stay.
 - Dark and light mode both required.
@@ -50,6 +51,7 @@ README screenshots (imgur links) of dark, light, menubar and settings. App icon 
 2. Popover and main window are one product, one visual language.
 3. Native first: system controls, system materials, respect Reduce Transparency and Increase Contrast.
 4. Status should feel alive without lying: show only what yt-dlp actually reports.
+5. Adding is never blocked: the next link can always be pasted, whatever is running.
 
 ## Accessibility & Inclusion
 
