@@ -35,6 +35,7 @@ struct MainAppView: View {
     @State private var infoExpanded = false
     @Namespace private var typeNamespace
     @FocusState private var urlFocused: Bool
+    @State private var trayExpansion: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject private var deps = DependencyManager.shared
     @ObservedObject private var dl = DownloadManager.shared
@@ -92,6 +93,12 @@ struct MainAppView: View {
                 .motion(value: deps.missing.isEmpty)
             }
             .scrollIndicators(.never)
+            .scaleEffect(1 - 0.015 * trayExpansion, anchor: .top)
+            .blur(radius: 2 * trayExpansion)
+
+            Color.black.opacity(0.32 * trayExpansion)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
 
             VStack {
                 HStack {
@@ -111,9 +118,26 @@ struct MainAppView: View {
 
             VStack {
                 Spacer()
-                dock
+                if let playlist = dl.playlist {
+                    PlaylistTray(
+                        playlist: playlist,
+                        isDownloading: dl.isDownloading,
+                        status: dl.status,
+                        onCancel: { dl.cancel() },
+                        onRetry: { dl.retryFailed() },
+                        onReveal: { dl.revealLastFile() },
+                        onDismiss: { withAnimation(Motion.standard(reduce: reduceMotion)) { dl.dismissPlaylist() } },
+                        expansion: $trayExpansion
+                    )
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                } else {
+                    dock
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
             .padding(14)
+            .motion(value: dl.playlist != nil)
+            .onChange(of: dl.playlist == nil) { _, none in if none { trayExpansion = 0 } }
         }
         .frame(width: 460, height: 700)
         .tint(Brand.red)
@@ -389,16 +413,8 @@ struct MainAppView: View {
             .disabled(videoURL.isEmpty && !dl.isDownloading)
 
             if dl.isDownloading {
-                Group {
-                    if let value = dl.progress {
-                        ProgressView(value: value)
-                    } else {
-                        ProgressView()
-                    }
-                }
-                .progressViewStyle(.linear)
-                .padding(.horizontal, 14)
-                .motion(value: dl.progress)
+                DownerProgressBar(value: dl.progress)
+                    .padding(.horizontal, 14)
                 .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
             }
 

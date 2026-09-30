@@ -291,6 +291,47 @@ struct GlassCircleButtonStyle: ButtonStyle {
     }
 }
 
+/// Slim rounded progress bar in the brand red. `value == nil` slides a segment
+/// back and forth (or shows a soft full bar when Reduce Motion is on).
+struct DownerProgressBar: View {
+    var value: Double?
+    var tint: Color = Brand.red
+    var height: CGFloat = 5
+
+    @State private var phase: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.primary.opacity(0.12))
+                if let value {
+                    Capsule()
+                        .fill(tint)
+                        .frame(width: max(height, geo.size.width * min(1, max(0, value))))
+                } else if reduceMotion {
+                    Capsule().fill(tint.opacity(0.45))
+                } else {
+                    Capsule()
+                        .fill(tint)
+                        .frame(width: geo.size.width * 0.32)
+                        .offset(x: (geo.size.width * 1.32) * phase - geo.size.width * 0.32)
+                }
+            }
+            .clipShape(Capsule())
+        }
+        .frame(height: height)
+        .motion(value: value)
+        .onAppear {
+            guard value == nil, !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 1.3).repeatForever(autoreverses: false)) { phase = 1 }
+        }
+        .accessibilityElement()
+        .accessibilityLabel("Progress")
+        .accessibilityValue(value.map { "\(Int(($0 * 100).rounded())) percent" } ?? "Working")
+    }
+}
+
 /// Status icon + text shared by the window and the popover. The icon becomes a
 /// check (with one bounce) when a download completes, and pulses while one runs.
 struct DownloadStatusLine: View {
