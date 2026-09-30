@@ -2,9 +2,10 @@
 //  DownloadManager.swift
 //  Downer
 //
-//  One downloader shared by the main window and the menu bar popover, so both
-//  always show the same state. Runs yt-dlp with an argument list (no shell),
-//  and turns its output into a status line and a real progress value.
+//  The download queue, shared by the main window and the menu bar popover.
+//  Links (single videos or playlists, in any mix) are added at any time; they
+//  are looked up, then downloaded one after another by yt-dlp, run with an
+//  argument list (no shell). Output becomes per-job and per-video progress.
 //
 
 import AppKit
@@ -14,107 +15,320 @@ import Foundation
 final class DownloadManager: ObservableObject {
     static let shared = DownloadManager()
 
+    @Published private(set) var jobs: [DownloadJob] = []
     @Published private(set) var status = "Idle"
-    @Published private(set) var isDownloading = false
-    /// 0...1 while yt-dlp reports a percentage, nil while it is preparing or merging.
-    @Published private(set) var progress: Double?
-    /// Increments on every successful download; views use it to celebrate once.
+    /// Increments each time a job finishes cleanly; views use it to celebrate once.
     @Published private(set) var completions = 0
-    /// The file the last successful download produced, for "Show in Finder".
-    @Published private(set) var lastFile: URL?
-    /// Every file the last run produced (a playlist makes several).
-    @Published private(set) var lastFiles: [URL] = []
-    /// Set only while or after a playlist run. Single videos never set it.
-    @Published private(set) var playlist: PlaylistProgress?
-    /// True when the last run failed, so the menu bar icon can ask for attention.
+    /// True when something in the queue failed, so the menu bar icon can ask for attention.
     @Published private(set) var hadError = false
 
     private var process: Process?
-    private var idleTask: Task<Void, Never>?
+    private var runningID: UUID?
+    private var tracker = PlaylistTracker()
+    private var pathFile: URL?
     private var lastErrorLine: String?
     private var wasCancelled = false
-    private var pathFile: URL?
-    private var tracker = PlaylistTracker()
-    private var lastURL: String?
-    private var retryMap: [Int]?
+    private var stopQueue = false
+    private var idleTask: Task<Void, Never>?
+
+    // look-ups run one at a time so pasting twenty links does not start twenty yt-dlps
+    private var toResolve: [UUID] = []
+    private var resolving = false
 
     private init() {}
 
-    // MARK: Settings snapshot
-    private var defaults: UserDefaults { .standard }
+    #if DEBUG
+        /// Previews and screenshots only: show a queue without running anything.
+        static var previewTrayOpen = false
+        func loadPreview(jobs: [DownloadJob], status: String) {
+            self.jobs = jobs
+            self.status = status
+        }
+    #else
+        static let previewTrayOpen = false
+    #endif
 
-    private func string(_ key: String, _ fallback: String) -> String {
-        defaults.string(forKey: key) ?? fallback
+    // MARK: Derived state
+    var summary: QueueSummary { QueueSummary(jobs: jobs) }
+    var isDownloading: Bool { runningID != nil }
+    /// Something is running or waiting.
+    var isActive: Bool { jobs.contains { $0.state == .running || $0.state == .queued } }
+    /// A queue tray is warranted: more than one link, or a playlist.
+    var needsTray: Bool { jobs.count > 1 || jobs.first?.isPlaylist == true }
+    var runningJob: DownloadJob? { jobs.first { $0.id == runningID } }
+
+    /// 0…1 across the whole queue while it is active.
+    var progress: Double? { isActive ? summary.overall : nil }
+
+    var lastFiles: [URL] { jobs.flatMap(\.files) }
+
+    /// "3/14" while several videos are queued; nil for a lone video.
+    var queueLabel: String? {
+        let s = summary
+        guard s.units > 1, let position = s.currentPosition else { return nil }
+        return "\(position)/\(s.units)"
     }
 
-    private var downloadType: DownloadType {
-        DownloadType(rawValue: string("downloadType", DownloadType.both.rawValue)) ?? .both
-    }
-
-    private var destinationFolder: URL {
-        let fallback =
-            FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first?.path
-            ?? NSHomeDirectory()
-        return URL(fileURLWithPath: string("destinationFolder", fallback))
-    }
-
-    // MARK: Control
-    func start(url rawURL: String) {
-        start(url: rawURL, retrying: nil)
-    }
-
-    /// Download again only the failed items of the last playlist.
-    func retryFailed() {
-        guard let url = lastURL, let failed = playlist?.failed.map(\.id), !failed.isEmpty else { return }
-        start(url: url, retrying: failed)
-    }
-
-    /// Clear the playlist summary once a run is over.
-    func dismissPlaylist() {
-        guard !isDownloading else { return }
-        playlist = nil
-        hadError = false
-        status = "Idle"
-    }
-
-    private func start(url rawURL: String, retrying: [Int]?) {
-        let url = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !url.isEmpty, !isDownloading else { return }
+    // MARK: Adding links
+    /// Accepts one link or several separated by spaces or new lines. Returns how many were queued.
+    @discardableResult
+    func add(_ text: String) -> Int {
+        let links = Self.links(in: text)
+        guard !links.isEmpty else {
+            status = "Paste a link to a video or playlist."
+            return 0
+        }
         idleTask?.cancel()
-        hadError = false
 
+        // a fresh session: drop what finished last time
+        if !isActive {
+            jobs.removeAll { $0.isFinished }
+            hadError = false
+            stopQueue = false
+        }
+
+        var added = 0
+        let options = JobOptions.current()
+        for link in links {
+            if jobs.contains(where: { $0.url == link && !$0.isFinished }) { continue }
+            let job = DownloadJob(url: link, options: options)
+            jobs.append(job)
+            toResolve.append(job.id)
+            added += 1
+        }
+        if added == 0 {
+            status = "Already in the queue."
+        } else if isDownloading {
+            status = added == 1 ? "Added to the queue." : "Added \(added) to the queue."
+        } else {
+            status = "Checking link…"
+        }
+        resolveNext()
+        return added
+    }
+
+    nonisolated static func links(in text: String) -> [String] {
+        text.split(whereSeparator: { $0.isWhitespace })
+            .map { String($0).trimmingCharacters(in: CharacterSet(charactersIn: "<>\"',")) }
+            .filter { raw in
+                if raw.lowercased().hasPrefix("ytsearch") { return true }
+                guard let url = URL(string: raw), let scheme = url.scheme?.lowercased() else { return false }
+                return (scheme == "http" || scheme == "https") && url.host != nil
+            }
+    }
+
+    // MARK: Controlling
+    /// Stop the download in progress; the queue carries on with the next one.
+    func cancelCurrent() {
+        guard process != nil else { return }
+        wasCancelled = true
+        process?.terminate()
+    }
+
+    /// Stop everything, including what is waiting.
+    func cancelAll() {
+        stopQueue = true
+        for i in jobs.indices where jobs[i].state == .queued { jobs[i].state = .cancelled }
+        if process != nil {
+            wasCancelled = true
+            process?.terminate()
+        } else {
+            status = "Download cancelled."
+        }
+    }
+
+    /// Remove a waiting or finished job, or stop a running one.
+    func remove(_ id: UUID) {
+        if id == runningID {
+            cancelCurrent()
+        } else {
+            jobs.removeAll { $0.id == id }
+            if jobs.isEmpty { status = "Idle" }
+        }
+    }
+
+    func retry(_ id: UUID) {
+        guard let i = jobs.firstIndex(where: { $0.id == id }), jobs[i].isFinished, jobs[i].state != .done
+        else { return }
+        if let failed = jobs[i].playlist?.failed.map(\.id), !failed.isEmpty {
+            jobs[i].only = failed
+        } else {
+            jobs[i].only = nil
+            jobs[i].fraction = 0
+            if var p = jobs[i].playlist {
+                for k in p.items.indices where p.items[k].state != .done {
+                    p.items[k].state = .queued
+                    p.items[k].fraction = 0
+                }
+                jobs[i].playlist = p
+            }
+        }
+        jobs[i].state = .queued
+        jobs[i].detail = nil
+        stopQueue = false
+        hadError = jobs.contains { $0.state == .failed }
+        pump()
+    }
+
+    func retryAllFailed() {
+        for job in jobs where job.state == .failed || job.state == .cancelled { retry(job.id) }
+    }
+
+    /// Drop everything that has finished.
+    func clearFinished() {
+        jobs.removeAll { $0.isFinished }
+        if jobs.isEmpty {
+            hadError = false
+            status = "Idle"
+        }
+    }
+
+    func revealFiles() {
+        let files = lastFiles
+        if files.isEmpty {
+            NSWorkspace.shared.open(JobOptions.current().folder)
+        } else {
+            NSWorkspace.shared.activateFileViewerSelecting(files)
+        }
+    }
+
+    // MARK: Looking links up
+    private func resolveNext() {
+        guard !resolving else { return }
+        while let id = toResolve.first {
+            toResolve.removeFirst()
+            guard let job = jobs.first(where: { $0.id == id }), job.isResolving else { continue }
+            resolving = true
+            let path = Self.path(for: .ytDlp)
+            let url = job.url
+            let only = job.only
+            Task.detached { [weak self] in
+                let result = Self.probe(url: url, ytDlp: path, only: only)
+                await self?.applyProbe(result, to: id)
+            }
+            return
+        }
+        pump()
+    }
+
+    private func applyProbe(_ result: ProbeResult?, to id: UUID) {
+        resolving = false
+        if let i = jobs.firstIndex(where: { $0.id == id }) {
+            jobs[i].isResolving = false
+            if let result {
+                jobs[i].title = result.playlistTitle ?? result.titles.first
+                if let name = result.playlistTitle, result.titles.count > 1, jobs[i].state == .queued {
+                    jobs[i].playlist = PlaylistProgress(
+                        title: name,
+                        items: result.titles.enumerated().map {
+                            PlaylistItem(id: $0.offset + 1, title: $0.element)
+                        },
+                        current: nil, speed: nil)
+                }
+            }
+        }
+        resolveNext()
+    }
+
+    struct ProbeResult {
+        var playlistTitle: String?
+        var titles: [String]
+    }
+
+    /// One quick yt-dlp call that lists titles without downloading anything.
+    nonisolated private static func probe(url: String, ytDlp: String, only: [Int]?) -> ProbeResult? {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: ytDlp)
+        var args = ["--flat-playlist", "--no-warnings", "--print", "%(playlist_title|)s\t%(title)s"]
+        if let only { args += ["--playlist-items", only.map(String.init).joined(separator: ",")] }
+        args.append(url)
+        proc.arguments = args
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = Pipe()
+        guard (try? proc.run()) != nil else { return nil }
+
+        // a link that never answers must not hold up the queue
+        let watchdog = DispatchWorkItem { if proc.isRunning { proc.terminate() } }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 45, execute: watchdog)
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        proc.waitUntilExit()
+        watchdog.cancel()
+        guard proc.terminationStatus == 0 else { return nil }
+
+        let lines = (String(data: data, encoding: .utf8) ?? "")
+            .split(whereSeparator: \.isNewline).map(String.init)
+        guard !lines.isEmpty else { return nil }
+        var playlistTitle: String?
+        var titles: [String] = []
+        for line in lines {
+            let parts = line.components(separatedBy: "\t")
+            if parts.count >= 2 {
+                if playlistTitle == nil, !parts[0].isEmpty, parts[0] != "NA" { playlistTitle = parts[0] }
+                titles.append(parts[1])
+            } else {
+                titles.append(line)
+            }
+        }
+        return ProbeResult(playlistTitle: playlistTitle, titles: titles)
+    }
+
+    // MARK: Running
+    private func pump() {
+        guard runningID == nil, !stopQueue else { return }
+        guard let next = jobs.first(where: { $0.state == .queued }) else {
+            finishQueue()
+            return
+        }
+        // wait for the look-up so the job starts with real titles
+        if next.isResolving {
+            status = "Checking link…"
+            resolveNext()
+            return
+        }
+        run(next.id)
+    }
+
+    private func run(_ id: UUID) {
+        guard let i = jobs.firstIndex(where: { $0.id == id }) else { return }
+        let job = jobs[i]
         let fm = FileManager.default
-        let ytDlp = Tool.ytDlp
-        let ytDlpPath = string(ytDlp.defaultsKey, ytDlp.defaultPath)
-        let ffmpegPath = string(Tool.ffmpeg.defaultsKey, Tool.ffmpeg.defaultPath)
-        let ffprobePath = string(Tool.ffprobe.defaultsKey, Tool.ffprobe.defaultPath)
+        let ytDlpPath = Self.path(for: .ytDlp)
+        let ffmpegPath = Self.path(for: .ffmpeg)
+        let ffprobePath = Self.path(for: .ffprobe)
 
-        guard fm.fileExists(atPath: destinationFolder.path) else {
-            fail("Destination folder not found.")
+        func stop(_ message: String) {
+            jobs[i].state = .failed
+            jobs[i].detail = message
+            hadError = true
+            status = message
+            pump()  // a missing folder should not block the links that can still run
+        }
+        guard fm.fileExists(atPath: job.options.folder.path) else {
+            stop("Destination folder not found.")
             return
         }
         guard fm.isExecutableFile(atPath: ytDlpPath) else {
-            fail("yt‑dlp not found.\nInstall it in Settings → Requirements.")
+            stop("yt‑dlp not found.\nInstall it in Settings → Requirements.")
             return
         }
-        guard fm.isExecutableFile(atPath: ffmpegPath), fm.isExecutableFile(atPath: ffprobePath)
-        else {
-            fail("ffmpeg / ffprobe not found.\nInstall them in Settings → Requirements.")
+        guard fm.isExecutableFile(atPath: ffmpegPath), fm.isExecutableFile(atPath: ffprobePath) else {
+            stop("ffmpeg / ffprobe not found.\nInstall them in Settings → Requirements.")
             return
         }
 
-        var args = formatArguments()
+        var args = Self.formatArguments(for: job.options)
         let pathFile = fm.temporaryDirectory.appendingPathComponent("downer-\(UUID().uuidString).txt")
         self.pathFile = pathFile
         args += ["--print-to-file", "after_move:filepath", pathFile.path]
         args += ["--newline", "--ffmpeg-location", (ffmpegPath as NSString).deletingLastPathComponent]
-        if let retrying { args += ["--playlist-items", retrying.map(String.init).joined(separator: ",")] }
-        args.append(url)
+        if let only = job.only { args += ["--playlist-items", only.map(String.init).joined(separator: ",")] }
+        args.append(job.url)
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: ytDlpPath)
         proc.arguments = args
-        proc.currentDirectoryURL = destinationFolder
+        proc.currentDirectoryURL = job.options.folder
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = "\((ffmpegPath as NSString).deletingLastPathComponent):" + (env["PATH"] ?? "")
         proc.environment = env
@@ -122,7 +336,6 @@ final class DownloadManager: ObservableObject {
         let pipe = Pipe()
         proc.standardOutput = pipe
         proc.standardError = pipe
-
         let buffer = LineBuffer()
         pipe.fileHandleForReading.readabilityHandler = { [weak self] h in
             let data = h.availableData
@@ -134,108 +347,90 @@ final class DownloadManager: ObservableObject {
             let complete = buffer.append(chunk)
             guard !complete.isEmpty else { return }
             Task { @MainActor in
-                for line in complete { self?.handle(line: line) }
+                for line in complete { self?.handle(line: line, job: id) }
             }
         }
         proc.terminationHandler = { [weak self] p in
             pipe.fileHandleForReading.readabilityHandler = nil
             let code = p.terminationStatus
-            Task { @MainActor in self?.finished(code: code) }
+            Task { @MainActor in self?.finished(code: code, job: id) }
         }
 
+        tracker = job.playlist == nil && job.only == nil
+            ? PlaylistTracker()
+            : PlaylistTracker(retrying: job.only, keeping: job.playlist)
         wasCancelled = false
-        lastFile = nil
-        lastFiles = []
-        lastURL = url
-        retryMap = retrying
-        tracker = retrying == nil ? PlaylistTracker() : PlaylistTracker(retrying: retrying, keeping: playlist)
-        if retrying == nil { playlist = nil }
         lastErrorLine = nil
-        progress = nil
-        status = "Starting download…"
-        isDownloading = true
+        jobs[i].state = .running
+        jobs[i].detail = nil
+        runningID = id
         process = proc
+        status = "Starting download…"
 
         do {
             try proc.run()
         } catch {
             process = nil
-            fail("Could not start yt‑dlp: \(error.localizedDescription)")
+            runningID = nil
+            stop("Could not start yt‑dlp: \(error.localizedDescription)")
         }
     }
 
-    func revealLastFile() {
-        let files = lastFiles.isEmpty ? lastFile.map { [$0] } ?? [] : lastFiles
-        if files.isEmpty {
-            NSWorkspace.shared.open(destinationFolder)
-        } else {
-            NSWorkspace.shared.activateFileViewerSelecting(files)
-        }
-    }
-
-    func cancel() {
-        guard isDownloading else { return }
-        wasCancelled = true
-        process?.terminate()
+    nonisolated static func path(for tool: Tool) -> String {
+        UserDefaults.standard.string(forKey: tool.defaultsKey) ?? tool.defaultPath
     }
 
     // MARK: Arguments
-    private func numericAbr(_ quality: String) -> Int? {
-        Int(quality.replacingOccurrences(of: "k", with: ""))
-    }
+    nonisolated static func formatArguments(for o: JobOptions) -> [String] {
+        func abr(_ quality: String) -> Int? { Int(quality.replacingOccurrences(of: "k", with: "")) }
+        let audioFilter = abr(o.audioQuality).map { "bestaudio[abr<=\($0)][vcodec=none]" } ?? "bestaudio"
 
-    private func formatArguments() -> [String] {
-        let resolution = string("selectedResolution", "1080")
-        let container = string("selectedVideoFormat", "mp4")
-        let quality = string("selectedAudioQuality", "source")
-        let audioFormat = string("selectedAudioFormat", "opus")
-
-        let audioFilter: String = {
-            if let abr = numericAbr(quality) { return "bestaudio[abr<=\(abr)][vcodec=none]" }
-            return "bestaudio"
-        }()
-
-        switch downloadType {
+        switch o.type {
         case .audio:
             var args = ["-f", audioFilter]
-            if audioFormat != "source" {  // transcode only if asked
-                args += ["--extract-audio", "--audio-format", audioFormat]
-                if let abr = numericAbr(quality), abr <= 160 {
-                    args += ["--audio-quality", quality]
+            if o.audioFormat != "source" {  // transcode only if asked
+                args += ["--extract-audio", "--audio-format", o.audioFormat]
+                if let rate = abr(o.audioQuality), rate <= 160 {
+                    args += ["--audio-quality", o.audioQuality]
                 }
             }
             return args
         case .video:
-            return ["-f", "bestvideo[height<=\(resolution)][acodec=none]", "--remux-video", container]
+            return ["-f", "bestvideo[height<=\(o.resolution)][acodec=none]", "--remux-video", o.container]
         case .both:
             return [
-                "-f", "bestvideo[height<=\(resolution)]+\(audioFilter)",
-                "--merge-output-format", container,
+                "-f", "bestvideo[height<=\(o.resolution)]+\(audioFilter)",
+                "--merge-output-format", o.container,
             ]
         }
     }
 
     // MARK: Output
-    private func handle(line raw: String) {
+    private func handle(line raw: String, job id: UUID) {
+        guard id == runningID, let i = jobs.firstIndex(where: { $0.id == id }) else { return }
         let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if line.hasPrefix("ERROR") { lastErrorLine = line }
 
-        let hadPlaylist = playlist != nil
         tracker.consume(line)
-        if tracker.progress != playlist { playlist = tracker.progress }
-        if !hadPlaylist, playlist != nil, let url = lastURL { fetchTitles(for: url) }
+        if tracker.progress != jobs[i].playlist { jobs[i].playlist = tracker.progress }
+        if let p = jobs[i].playlist {
+            jobs[i].speed = p.speed
+        } else {
+            jobs[i].fraction = max(jobs[i].fraction, tracker.fileFraction)
+            jobs[i].speed = tracker.fileSpeed
+            if jobs[i].title == nil { jobs[i].title = tracker.fileTitle }
+        }
 
         // "[download]  42.3% of  120.00MiB at  3.20MiB/s ETA 00:24"
         if line.hasPrefix("[download]"), let pct = Self.percent(in: line) {
-            if let playlist {
-                progress = playlist.overall
-                let current = playlist.current.map { "Item \($0) of \(playlist.total)" } ?? "Playlist"
-                var text = "\(current) · \(Int(pct.rounded()))%"
-                if let speed = playlist.speed { text += " · \(speed)" }
+            let prefix = queuePrefix()
+            if let p = jobs[i].playlist {
+                let current = p.current.map { "Item \($0) of \(p.total)" } ?? "Playlist"
+                var text = prefix + "\(current) · \(Int(pct.rounded()))%"
+                if let speed = p.speed { text += " · \(speed)" }
                 status = text
             } else {
-                progress = pct / 100
-                var text = "Downloading \(Int(pct.rounded()))%"
+                var text = prefix + "Downloading \(Int((jobs[i].fraction * 100).rounded()))%"
                 if let speed = Self.value(after: " at ", in: line) { text += " · \(speed)" }
                 if let eta = Self.value(after: "ETA ", in: line) { text += " · \(eta) left" }
                 status = text
@@ -243,106 +438,115 @@ final class DownloadManager: ObservableObject {
             return
         }
         // Only yt-dlp's own tagged lines are worth showing; ffmpeg chatter is not.
-        guard line.hasPrefix("[") else { return }
+        guard line.hasPrefix("[") || line.hasPrefix("Deleting original file") else { return }
         if line.hasPrefix("[Merger]") || line.hasPrefix("[VideoRemuxer]") {
-            if playlist == nil { progress = nil }
-            status = "Merging…"
+            status = queuePrefix() + "Merging…"
         } else if line.hasPrefix("[ExtractAudio]") {
-            if playlist == nil { progress = nil }
-            status = "Converting audio…"
-        } else if line.hasPrefix("[download] Downloading item"), let playlist, let current = playlist.current {
-            progress = playlist.overall
-            status = "Item \(current) of \(playlist.total)"
+            status = queuePrefix() + "Converting audio…"
+        } else if line.hasPrefix("[download] Downloading item"), let p = jobs[i].playlist, let current = p.current {
+            status = queuePrefix() + "Item \(current) of \(p.total)"
         } else if line.hasPrefix("[download]") || line.contains("%(filepath)s") {
             return
         } else if line.hasPrefix("Deleting original file") {
-            status = "Finishing…"
-        } else if playlist == nil {
-            status = line
+            status = queuePrefix() + "Finishing…"
+        } else if jobs[i].playlist == nil {
+            status = queuePrefix() + line
         }
     }
 
-    /// Ask yt-dlp for the playlist's titles so every queued row has a name.
-    private func fetchTitles(for url: String) {
-        let ytDlpPath = string(Tool.ytDlp.defaultsKey, Tool.ytDlp.defaultPath)
-        let only = retryMap
-        Task.detached { [weak self] in
-            let proc = Process()
-            proc.executableURL = URL(fileURLWithPath: ytDlpPath)
-            var args = ["--flat-playlist", "--print", "%(title)s", "--no-warnings"]
-            if let only { args += ["--playlist-items", only.map(String.init).joined(separator: ",")] }
-            args.append(url)
-            proc.arguments = args
-            let pipe = Pipe()
-            proc.standardOutput = pipe
-            proc.standardError = Pipe()
-            guard (try? proc.run()) != nil else { return }
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            proc.waitUntilExit()
-            let titles = (String(data: data, encoding: .utf8) ?? "")
-                .split(whereSeparator: \.isNewline).map(String.init)
-            guard !titles.isEmpty else { return }
-            await self?.applyTitles(titles)
-        }
+    /// "Link 2 of 5 · " when several links are queued.
+    private func queuePrefix() -> String {
+        guard jobs.count > 1, let running = jobs.firstIndex(where: { $0.id == runningID }) else { return "" }
+        return "Link \(running + 1) of \(jobs.count) · "
     }
 
-    private func applyTitles(_ titles: [String]) {
-        tracker.setTitles(titles)
-        playlist = tracker.progress
-    }
-
-    private func finished(code: Int32) {
+    private func finished(code: Int32, job id: UUID) {
+        guard id == runningID else { return }
         process = nil
-        isDownloading = false
-        progress = nil
+        runningID = nil
         tracker.finish(exitCode: code, cancelled: wasCancelled)
-        if tracker.progress != nil { playlist = tracker.progress }
+
         let files = pathFile
             .flatMap { try? String(contentsOf: $0, encoding: .utf8) }?
             .split(whereSeparator: \.isNewline).map { URL(fileURLWithPath: String($0)) } ?? []
-        defer { if let pathFile { try? FileManager.default.removeItem(at: pathFile) } }
-        if !files.isEmpty { lastFiles = (retryMap == nil ? [] : lastFiles) + files }
+        if let pathFile { try? FileManager.default.removeItem(at: pathFile) }
+        pathFile = nil
+
+        guard let i = jobs.firstIndex(where: { $0.id == id }) else {
+            pump()
+            return
+        }
+        if tracker.progress != nil { jobs[i].playlist = tracker.progress }
+        jobs[i].files += files
+        jobs[i].speed = nil
 
         if wasCancelled {
-            status = "Download cancelled."
-        } else if let playlist {
-            let failed = playlist.failed.count
-            lastFile = lastFiles.last
-            if failed == 0 && code == 0 {
-                status = "Playlist completed."
+            jobs[i].state = .cancelled
+        } else if let playlist = jobs[i].playlist, !jobs[i].autoRetried,
+            !playlist.failed.isEmpty, playlist.failed.allSatisfy({ DownloadJob.isTransient($0.detail) })
+        {
+            // a network hiccup: try just the failed videos once more
+            jobs[i].autoRetried = true
+            jobs[i].only = playlist.failed.map(\.id)
+            jobs[i].state = .queued
+            status = "Retrying \(playlist.failed.count) that hit a network error…"
+        } else if jobs[i].playlist == nil, code != 0, !jobs[i].autoRetried,
+            DownloadJob.isTransient(lastErrorLine.map { PlaylistTracker.reason(from: $0) })
+        {
+            jobs[i].autoRetried = true
+            jobs[i].state = .queued
+            status = "Retrying after a network error…"
+        } else if let playlist = jobs[i].playlist {
+            if playlist.failed.isEmpty && code == 0 {
+                jobs[i].state = .done
                 completions += 1
-            } else if playlist.doneCount == 0 {
-                hadError = true
-                status = "Download failed (code \(code))."
-                return
             } else {
-                hadError = failed > 0
-                status = "\(playlist.doneCount) of \(playlist.total) downloaded · \(failed) failed"
-                if failed == 0 { completions += 1 }
-                return  // keep the summary on screen
+                jobs[i].state = .failed
+                jobs[i].detail = "\(playlist.doneCount) of \(playlist.total) downloaded"
+                hadError = true
             }
         } else if code == 0 {
-            status = "Download completed."
+            jobs[i].state = .done
+            jobs[i].fraction = 1
             completions += 1
-            lastFile = files.last
-            lastFiles = files
         } else {
-            let detail = lastErrorLine.map { "\n" + String($0.prefix(140)) } ?? ""
-            status = "Download failed (code \(code))." + detail
+            jobs[i].state = .failed
+            jobs[i].detail = lastErrorLine.map { PlaylistTracker.reason(from: $0) } ?? "Failed (code \(code))"
             hadError = true
-            return  // keep the error on screen until the next attempt
+        }
+        let stopped = stopQueue && wasCancelled
+        wasCancelled = false
+        if stopped {
+            // Cancel All: pump() will not run, so say so here
+            status = "Download cancelled."
+            scheduleIdle()
+        }
+        pump()
+    }
+
+    /// Nothing left to run: describe how it went.
+    private func finishQueue() {
+        guard !jobs.isEmpty else { return }
+        let s = summary
+        if jobs.allSatisfy({ $0.state == .cancelled }) {
+            status = "Download cancelled."
+        } else if jobs.contains(where: { $0.state == .failed }) {
+            if jobs.count == 1, !jobs[0].isPlaylist {
+                status = "Download failed.\n" + (jobs[0].detail ?? "")
+            } else {
+                let failed = max(s.failedUnits, jobs.filter { $0.state == .failed }.count)
+                status = "\(s.doneUnits) of \(s.units) downloaded · \(failed) failed"
+            }
+            return  // keep the summary on screen until the next attempt
+        } else if jobs.count == 1 {
+            status = jobs[0].isPlaylist ? "Playlist completed." : "Download completed."
+        } else {
+            status = "All \(s.units) downloads completed."
         }
         scheduleIdle()
     }
 
-    private func fail(_ message: String) {
-        hadError = true
-        status = message
-        isDownloading = false
-        progress = nil
-    }
-
-    /// Return to "Idle" a little while after a finished, failed or cancelled run.
+    /// Return to "Idle" a little while after a clean finish.
     private func scheduleIdle() {
         idleTask?.cancel()
         idleTask = Task { [weak self] in
@@ -353,9 +557,10 @@ final class DownloadManager: ObservableObject {
     }
 
     private func resetIfIdle() {
-        if !isDownloading { status = "Idle" }
+        if !isActive { status = "Idle" }
     }
 
+    // MARK: Parsing helpers
     nonisolated private static func percent(in line: String) -> Double? {
         guard let r = line.range(of: #"(\d+(?:\.\d+)?)%"#, options: .regularExpression) else {
             return nil

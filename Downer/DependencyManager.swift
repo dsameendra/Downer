@@ -94,7 +94,10 @@ final class DependencyManager: ObservableObject {
     var hasCheckedOnce: Bool { !status.isEmpty }
 
     var brewPath: String? {
-        ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"].first {
+        #if DOWNER_TEST_NO_BREW
+            return nil  // lets tests exercise the no-Homebrew install path
+        #endif
+        return ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"].first {
             FileManager.default.isExecutableFile(atPath: $0)
         }
     }

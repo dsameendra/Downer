@@ -47,7 +47,11 @@ struct PlaylistTracker {
     private var indexMap: [Int]?
     private var passes = 1
     private var passIndex = 0
-    private var expectedTotal: Int?
+    /// Progress of the current video across its streams (video then audio), for
+    /// single videos as well as playlist items.
+    private(set) var fileFraction: Double = 0
+    private(set) var fileSpeed: String?
+    private(set) var fileTitle: String?
 
     init(retrying map: [Int]? = nil, keeping previous: PlaylistProgress? = nil) {
         indexMap = map
@@ -69,12 +73,17 @@ struct PlaylistTracker {
             passes = max(1, formats.split(separator: "+").count)
         } else if let name = line.value(after: "[download] Destination: ") {
             passIndex += 1
+            if fileTitle == nil { fileTitle = Self.title(fromFile: name) }
             if var p = progress, let current = p.current, p.items[index(current)].title == nil {
                 p.items[index(current)].title = Self.title(fromFile: name)
                 progress = p
             }
         } else if line.hasPrefix("[download]"), let pct = Self.percent(line) {
-            updateProgress(pct / 100, speed: line.value(after: " at ")?.firstWord)
+            let done = Double(max(0, passIndex - 1))
+            let value = passIndex <= passes ? (done + pct / 100) / Double(passes) : pct / 100
+            fileFraction = min(1, max(fileFraction, value))
+            fileSpeed = line.value(after: " at ")?.firstWord ?? fileSpeed
+            updateProgress(pct / 100, speed: fileSpeed)
         } else if line.hasPrefix("ERROR:") {
             failCurrent(Self.reason(from: line))
         }
@@ -147,6 +156,8 @@ struct PlaylistTracker {
         progress = p
         passIndex = 0
         passes = 1
+        fileFraction = 0
+        fileTitle = nil
     }
 
     private mutating func updateProgress(_ pct: Double, speed: String?) {
