@@ -6,19 +6,23 @@
 //
 
 import Cocoa
+import Combine
 import KeyboardShortcuts
 import SwiftUI
 
-class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverDelegate {
 
     static private(set) var shared: AppDelegate!  // singleton
 
     var mainWindow: NSWindow!
     var statusItem: NSStatusItem!
     var popover: NSPopover!
+    private var cancellables = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
+        AppearanceMode.apply(
+            UserDefaults.standard.string(forKey: AppearanceMode.storageKey) ?? "system")
 
         let hostVC = NSHostingController(rootView: MainAppView())
         let w = NSWindow(
@@ -32,7 +36,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         w.titleVisibility            = .visible
         w.titlebarAppearsTransparent = true
         w.isMovableByWindowBackground = true
-        w.backgroundColor            = .black
+        w.backgroundColor            = .clear
         w.center()
         w.delegate = self
         w.makeKeyAndOrderFront(nil)
@@ -47,7 +51,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // build the menu‑bar pop‑over
         popover = NSPopover()
         popover.behavior = .transient
-        popover.contentSize = NSSize(width: 360, height: 200)
+        popover.delegate = self
+        popover.contentSize = NSSize(width: 360, height: 180)
         popover.contentViewController =
             NSHostingController(rootView: PopOverView())
 
@@ -69,6 +74,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             btn.action = #selector(statusItemClicked(_:))
             btn.target = self
         }
+
+        // show live progress next to the menu bar icon
+        let dl = DownloadManager.shared
+        Publishers.CombineLatest(dl.$isDownloading, dl.$progress)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] downloading, progress in
+                guard let btn = self?.statusItem.button else { return }
+                if downloading {
+                    let text = progress.map { " \(Int(($0 * 100).rounded()))%" } ?? " …"
+                    btn.attributedTitle = NSAttributedString(
+                        string: text,
+                        attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)]
+                    )
+                } else {
+                    btn.title = ""
+                }
+            }
+            .store(in: &cancellables)
 
         // register global shortcut
         KeyboardShortcuts.onKeyDown(for: .downloadShortcut) { [weak self] in
@@ -136,12 +159,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if popover.isShown {
             popover.performClose(sender)
         } else {
+            NSApp.activate(ignoringOtherApps: true)
             popover.show(
                 relativeTo: btn.bounds,
                 of: btn,
                 preferredEdge: .minY
             )
             popover.contentViewController?.view.window?.becomeKey()
+            NotificationCenter.default.post(name: .popoverWillShow, object: nil)
         }
     }
 
@@ -161,7 +186,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             w.titleVisibility            = .visible
             w.titlebarAppearsTransparent = true
             w.isMovableByWindowBackground = true
-            w.backgroundColor            = .black
+            w.backgroundColor            = .clear
             w.isReleasedWhenClosed = false
             w.delegate = self
             mainWindow = w

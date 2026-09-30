@@ -9,302 +9,94 @@ import AppKit
 import SwiftUI
 
 struct PopOverView: View {
-    @AppStorage("downloadType") private var downloadTypeRaw = DownloadType.both
-        .rawValue
-    @AppStorage("selectedResolution") private var selectedResolution = "1080"
-    @AppStorage("selectedVideoFormat") private var selectedVideoFormat = "mp4"
-    @AppStorage("selectedAudioQuality") private var selectedAudioQuality =
-        "source"
-    @AppStorage("selectedAudioFormat") private var selectedAudioFormat = "opus"
-
-    @AppStorage("destinationFolder") private var destinationFolderPath =
-        FileManager
-        .default
-        .urls(for: .downloadsDirectory, in: .userDomainMask)
-        .first!.path
-    // user‑configurable tool paths
-    @AppStorage("ytDlpPath") private var ytDlpPath: String =
-        "/opt/homebrew/bin/yt-dlp"
-    @AppStorage("ffmpegPath") private var ffmpegPath: String =
-        "/opt/homebrew/bin/ffmpeg"
-    @AppStorage("ffprobePath") private var ffprobePath: String =
-        "/opt/homebrew/bin/ffprobe"
-
+    @ObservedObject private var dl = DownloadManager.shared
     @State private var videoURL = ""
-    @State private var downloadStatus = "Idle"
-    @State private var isDownloading = false
-    @State private var currentProcess: Process?
+    @FocusState private var urlFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var downloadType: DownloadType {
-        DownloadType(rawValue: downloadTypeRaw) ?? .both
-    }
-    private var destinationFolder: URL {
-        URL(fileURLWithPath: destinationFolderPath)
-    }
-
-    @Environment(\.colorScheme) var colorScheme
-
-    // MARK: - Theme
-    private var glassBackground: some View {
-        ZStack {
-            (colorScheme == .dark
-                ? Color.black.opacity(0.15) : Color.white.opacity(0.15))
-        }
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-
-    private var brandGradient: LinearGradient {
-        LinearGradient(
-            gradient: Gradient(colors: [
-                Color.red.opacity(0.9), Color.red.opacity(0.7),
-            ]),
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
-
+    // MARK: - Body
+    // NSPopover supplies the system glass behind this view, so no ground is drawn here.
     var body: some View {
-        ZStack {
-            // Background gradient
-            LinearGradient(
-                gradient: Gradient(colors: [
-                    colorScheme == .dark
-                        ? Color(white: 0.1) : Color(white: 0.95),
-                    colorScheme == .dark ? Color.black : Color.white,
-                ]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+        VStack(spacing: 12) {
+            HStack(spacing: 9) {
+                Image(systemName: "link")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
 
-            VStack(spacing: 16) {
-                // URL Input
-                ZStack(alignment: .leading) {
-                    glassBackground
-                        .frame(height: 36)
-                        .overlay(
-                            RoundedRectangle(
-                                cornerRadius: 10,
-                                style: .continuous
-                            )
-                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                        )
-                    TextField("Enter video/playlist URL", text: $videoURL)
-                        .textFieldStyle(.plain)
-                        .padding(.horizontal, 12)
-                        .font(.subheadline)
-                }
+                TextField("Enter video/playlist URL", text: $videoURL)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 14))
+                    .focused($urlFocused)
+                    .onSubmit { if !videoURL.isEmpty && !dl.isDownloading { dl.start(url: videoURL) } }
 
-                // Download button
-                Button(action: {
-                    isDownloading ? stopDownload() : startDownload()
-                }) {
-                    HStack {
-                        Image(
-                            systemName: isDownloading
-                                ? "xmark.circle.fill" : "arrow.down.circle.fill"
-                        )
-                        .font(.system(size: 14, weight: .medium))
-                        Text(isDownloading ? "Cancel" : "Download")
-                            .font(.system(size: 14, weight: .semibold))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(
-                        Group {
-                            if isDownloading {
-                                Color.gray.opacity(0.2)
-                            } else {
-                                brandGradient
-                            }
+                if videoURL.isEmpty {
+                    Button("Paste") {
+                        if let s = NSPasteboard.general.string(forType: .string) {
+                            videoURL = s.trimmingCharacters(in: .whitespacesAndNewlines)
                         }
-                    )
-                    .clipShape(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    )
-                    .foregroundColor(isDownloading ? .primary : .white)
-                    .shadow(
-                        color: Color.red.opacity(isDownloading ? 0 : 0.3),
-                        radius: 4,
-                        x: 0,
-                        y: 2
-                    )
-                }
-                .disabled(videoURL.isEmpty && !isDownloading)
-                .buttonStyle(.plain)
-
-                // Status indicator
-                HStack(spacing: 10) {
-                    if isDownloading {
-                        ProgressView()
-                            .scaleEffect(0.5)
-                            .frame(width: 16, height: 16)
-                    } else {
-                        Image(systemName: "circle.fill")
-                            .foregroundColor(
-                                downloadStatus == "Idle"
-                                    ? .green
-                                    : downloadStatus.contains(
-                                        "completed"
-                                    ) ? .green : .orange
-                            )
-                            .font(.system(size: 8))
                     }
-
-                    // Status text
-                    Text(downloadStatus)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
+                    .buttonStyle(PillButtonStyle())
+                    .transition(.scale(scale: 0.8).combined(with: .opacity))
                 }
-                .frame(height: 20)
-                .animation(
-                    .easeInOut(duration: 0.2),
-                    value: isDownloading
-                )
             }
-            .padding(20)
+            .padding(.leading, 15)
+            .padding(.trailing, 8)
+            .frame(height: 44)
+            .background(Color.primary.opacity(0.08), in: Capsule())
+            .overlay(Capsule().strokeBorder(Brand.red.opacity(urlFocused ? 0.55 : 0), lineWidth: 1.5))
+            .motion(Motion.quick, value: urlFocused)
+            .motion(Motion.quick, value: videoURL.isEmpty)
+
+            Button(action: {
+                dl.isDownloading ? dl.cancel() : dl.start(url: videoURL)
+            }) {
+                HStack(spacing: 8) {
+                    Image(systemName: dl.isDownloading ? "xmark" : "arrow.down")
+                        .font(.system(size: 14, weight: .bold))
+                        .contentTransition(.symbolEffect(.replace))
+                    Text(dl.isDownloading ? "Cancel" : "Download")
+                        .contentTransition(.opacity)
+                }
+                .motion(Motion.quick, value: dl.isDownloading)
+            }
+            .buttonStyle(DownloadButtonStyle(isCancel: dl.isDownloading, height: 46, flat: true))
+            .keyboardShortcut(dl.isDownloading ? nil : .defaultAction)
+            .disabled(videoURL.isEmpty && !dl.isDownloading)
+
+            DownloadStatusLine(
+                status: dl.status,
+                isDownloading: dl.isDownloading,
+                completions: dl.completions
+            )
+            .frame(maxHeight: .infinity)
         }
+        // Opened by the menu bar icon or the global shortcut: pick up a copied
+        // link and put the cursor in the field, so copy → shortcut → Return works.
+        .onReceive(NotificationCenter.default.publisher(for: .popoverWillShow)) { _ in
+            if videoURL.isEmpty, let copied = Self.copiedLink() {
+                withAnimation(Motion.standard(reduce: reduceMotion)) { videoURL = copied }
+            }
+            urlFocused = true
+        }
+        .padding(16)
         .frame(width: 360, height: 180)
-        .tint(.red)
+        .tint(Brand.red)
     }
 
-    private func numericAbr(_ quality: String) -> Int? {
-        Int(quality.replacingOccurrences(of: "k", with: ""))
-    }
-
-    private func startDownload() {
-        guard !videoURL.isEmpty else { return }
-
-        // —— sanity checks —— //
-        guard FileManager.default.fileExists(atPath: destinationFolder.path)
-        else {
-            downloadStatus = "Destination folder missing."
-            return
-        }
-        guard FileManager.default.isExecutableFile(atPath: ytDlpPath) else {
-            downloadStatus = "yt‑dlp not found.\nCheck Settings → Tool Paths."
-            return
-        }
-        guard FileManager.default.isExecutableFile(atPath: ffmpegPath),
-            FileManager.default.isExecutableFile(atPath: ffprobePath)
-        else {
-            downloadStatus =
-                "ffmpeg / ffprobe missing.\nCheck Settings → Tool Paths."
-            return
-        }
-
-        // build yt‑dlp format string
-        let audioFilter: String = {
-            if selectedAudioQuality == "source" {
-                return "bestaudio"
-            }
-            if let abr = numericAbr(selectedAudioQuality) {
-                return "bestaudio[abr<=\(abr)][vcodec=none]"
-            }
-            return "bestaudio"
-        }()
-
-        let formatOpt: String
-        switch downloadType {
-        case .audio:
-            var fmt = "-f \"\(audioFilter)\""
-
-            // decide whether to transcode
-            if selectedAudioFormat == "source" {
-                // user wants untouched stream in its native container
-                fmt += " --audio-format best"
-            } else if selectedAudioFormat != "opus" {
-                // transcode when requesting mp3 / m4a
-                fmt += " --extract-audio --audio-format \(selectedAudioFormat)"
-                if let abr = numericAbr(selectedAudioQuality), abr <= 160 {
-                    fmt += " --audio-quality \(selectedAudioQuality)"
-                }
-            }
-            formatOpt = fmt
-
-        case .video:
-            formatOpt = """
-                -f "bestvideo[height<=\(selectedResolution)][acodec=none]" \
-                --remux-video \(selectedVideoFormat)
-                """
-
-        case .both:
-            formatOpt = """
-                -f \"bestvideo[height<=\(selectedResolution)]+\(audioFilter)\" \\
-                --merge-output-format \(selectedVideoFormat)
-                """
-        }
-
-        let workDir = destinationFolder.path.escaped()
-        let cmd =
-            "cd \(workDir) && \"\(ytDlpPath.escaped())\" \(formatOpt) \"\(videoURL.escaped())\""
-
-        isDownloading = true
-        downloadStatus = "Starting…"
-
-        // —— launch —— //
-        let proc = Process()
-        proc.launchPath = "/bin/zsh"
-        proc.arguments = ["-c", cmd]
-
-        // expose tool paths
-        let ffmpegDir = (ffmpegPath as NSString).deletingLastPathComponent
-        var env = ProcessInfo.processInfo.environment
-        env["PATH"] = "\(ffmpegDir):" + (env["PATH"] ?? "")
-        env["FFMPEG"] = ffmpegPath
-        env["FFPROBE"] = ffprobePath
-        proc.environment = env
-
-        let pipe = Pipe()
-        proc.standardOutput = pipe
-        proc.standardError = pipe
-        pipe.fileHandleForReading.readabilityHandler = { h in
-            let data = h.availableData
-            guard !data.isEmpty else {
-                h.readabilityHandler = nil
-                return
-            }
-
-            if let s = String(data: data, encoding: .utf8)?
+    private static func copiedLink() -> String? {
+        guard
+            let text = NSPasteboard.general.string(forType: .string)?
                 .trimmingCharacters(in: .whitespacesAndNewlines),
-                !s.isEmpty
-            {
-                DispatchQueue.main.async { downloadStatus = s }
-            }
-        }
-        proc.terminationHandler = { p in
-            pipe.fileHandleForReading.readabilityHandler = nil
-            DispatchQueue.main.async {
-                isDownloading = false
-                downloadStatus =
-                    p.terminationStatus == 0
-                    ? "Done"
-                    : "Error \(p.terminationStatus)"
-            }
-        }
-
-        currentProcess = proc
-        do { try proc.run() } catch {
-            downloadStatus = "Launch error: \(error.localizedDescription)"
-            isDownloading = false
-        }
-
-        // Revert to idle after 10 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
-            if !self.isDownloading {
-                self.downloadStatus = "Idle"
-            }
-        }
+            !text.contains("\n"),
+            let url = URL(string: text),
+            let scheme = url.scheme?.lowercased(),
+            scheme == "http" || scheme == "https",
+            url.host != nil
+        else { return nil }
+        return text
     }
+}
 
-    private func stopDownload() {
-        currentProcess?.terminate()
-        currentProcess = nil
-        isDownloading = false
-        downloadStatus = "Download cancelled."
-    }
+extension Notification.Name {
+    static let popoverWillShow = Notification.Name("DownerPopoverWillShow")
 }
