@@ -32,10 +32,13 @@ struct MainAppView: View {
         .path
 
     @State private var videoURL = ""
-    @State private var downloadStatus = "Idle"
-    @State private var isDownloading = false
-    @State private var currentProcess: Process?
     @State private var infoExpanded = false
+    @Namespace private var typeNamespace
+    @FocusState private var urlFocused: Bool
+    @State private var trayExpansion: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ObservedObject private var deps = DependencyManager.shared
+    @ObservedObject private var dl = DownloadManager.shared
 
     private var downloadType: Binding<DownloadType> {
         Binding(
@@ -70,587 +73,74 @@ struct MainAppView: View {
 
     @Environment(\.colorScheme) var colorScheme
 
-    private var glassBackground: some View {
-        ZStack {
-            if colorScheme == .dark {
-                Color.black.opacity(0.15)
-            } else {
-                Color.white.opacity(0.15)
-            }
-        }
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: 3)
-    }
-
-    private var brandGradient: LinearGradient {
-        LinearGradient(
-            gradient: Gradient(colors: [
-                Color.red.opacity(0.9), Color.red.opacity(0.7),
-            ]),
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
-
+    // MARK: - Body
     var body: some View {
         ZStack {
-            // Background gradient
-            LinearGradient(
-                gradient: Gradient(colors: [
-                    colorScheme == .dark ? Color.black : Color(white: 0.95),
-                    colorScheme == .dark ? Color(white: 0.15) : Color.white,
-                ]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            AmbientBackground()
 
-            VStack(spacing: 0) {
-                Color.clear.frame(height: 1)
-
-                ScrollView {
-                    VStack(alignment: .center, spacing: 10) {
-                        // URL Field
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Media URL")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-
-                            ZStack(alignment: .leading) {
-                                RoundedRectangle(
-                                    cornerRadius: 10,
-                                    style: .continuous
-                                )
-                                .fill(.ultraThinMaterial)
-                                .frame(height: 38)
-                                .overlay(
-                                    RoundedRectangle(
-                                        cornerRadius: 10,
-                                        style: .continuous
-                                    )
-                                    .stroke(
-                                        Color.white.opacity(0.2),
-                                        lineWidth: 1
-                                    )
-                                )
-
-                                HStack {
-                                    Image(systemName: "link")
-                                        .foregroundColor(.secondary)
-                                        .padding(.leading, 10)
-
-                                    TextField(
-                                        "Enter video/playlist URL",
-                                        text: $videoURL
-                                    )
-                                    .textFieldStyle(.plain)
-                                    .padding(.vertical, 10)
-
-                                    if !videoURL.isEmpty {
-                                        Button(action: { videoURL = "" }) {
-                                            Image(
-                                                systemName: "xmark.circle.fill"
-                                            )
-                                            .foregroundColor(.secondary)
-                                        }
-                                        .buttonStyle(.plain)
-                                        .padding(.trailing, 10)
-                                    }
-                                }
-                            }
-                        }
-                        .padding(.top, 8)
-
-                        // Destination folder
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Save Location")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-
-                            HStack(spacing: 8) {
-                                ZStack {
-                                    RoundedRectangle(
-                                        cornerRadius: 10,
-                                        style: .continuous
-                                    )
-                                    .fill(.ultraThinMaterial)
-                                    .frame(height: 38)
-                                    .overlay(
-                                        RoundedRectangle(
-                                            cornerRadius: 10,
-                                            style: .continuous
-                                        )
-                                        .stroke(
-                                            Color.white.opacity(0.2),
-                                            lineWidth: 1
-                                        )
-                                    )
-
-                                    HStack {
-                                        Image(systemName: "folder")
-                                            .foregroundColor(.secondary)
-                                            .padding(.leading, 10)
-
-                                        Text(
-                                            destinationFolder.relativePath
-                                        )
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
-                                        .padding(.vertical, 10)
-
-                                        Spacer()
-                                    }
-                                }
-
-                                Button(action: selectFolder) {
-                                    Text("Change")
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 9)
-                                        .background(
-                                            RoundedRectangle(
-                                                cornerRadius: 10,
-                                                style: .continuous
-                                            )
-                                            .fill(brandGradient)
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                                .frame(width: 75)
-                            }
-                        }
-
-                        // Download Type Selector
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Download Type")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-
-                            ZStack {
-                                RoundedRectangle(
-                                    cornerRadius: 10,
-                                    style: .continuous
-                                )
-                                .fill(.ultraThinMaterial)
-                                .overlay(
-                                    RoundedRectangle(
-                                        cornerRadius: 10,
-                                        style: .continuous
-                                    )
-                                    .stroke(
-                                        Color.white.opacity(0.2),
-                                        lineWidth: 1
-                                    )
-                                )
-
-                                HStack(spacing: 2) {
-                                    ForEach(DownloadType.allCases) { type in
-                                        Button(action: {
-                                            withAnimation(
-                                                .spring(response: 0.3)
-                                            ) {
-                                                downloadType.wrappedValue = type
-                                            }
-                                        }) {
-                                            Text(type.rawValue)
-                                                .fontWeight(.medium)
-                                                .frame(maxWidth: .infinity)
-                                                .padding(.vertical, 8)
-                                                .background(
-                                                    downloadType.wrappedValue
-                                                        == type
-                                                        ? RoundedRectangle(
-                                                            cornerRadius: 8,
-                                                            style: .continuous
-                                                        )
-                                                        .fill(
-                                                            LinearGradient(
-                                                                gradient:
-                                                                    Gradient(
-                                                                        colors: [
-                                                                            Color
-                                                                                .red
-                                                                                .opacity(
-                                                                                    0.8
-                                                                                ),
-                                                                            Color
-                                                                                .red
-                                                                                .opacity(
-                                                                                    0.6
-                                                                                ),
-                                                                        ]),
-                                                                startPoint:
-                                                                    .topLeading,
-                                                                endPoint:
-                                                                    .bottomTrailing
-                                                            )
-                                                        )
-                                                        .shadow(
-                                                            color: Color.red
-                                                                .opacity(0.3),
-                                                            radius: 4,
-                                                            x: 0,
-                                                            y: 2
-                                                        )
-                                                        : nil
-                                                )
-                                                .foregroundColor(
-                                                    downloadType.wrappedValue
-                                                        == type
-                                                        ? .white : .primary
-                                                )
-                                                .contentShape(
-                                                    RoundedRectangle(
-                                                        cornerRadius: 10,
-                                                        style: .continuous
-                                                    )
-                                                )
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                }
-                                .padding(3)
-                                .animation(
-                                    .spring(response: 0.3),
-                                    value: downloadType.wrappedValue
-                                )
-                            }
-                        }
-
-                        VStack(alignment: .leading, spacing: 10) {
-                            // Video options
-                            if downloadType.wrappedValue != .audio {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    Text("Video Options")
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
-
-                                    // Resolution picker (fixed)
-                                    GlassPickerView(
-                                        title: "Resolution",
-                                        options: resolutionOptions.map {
-                                            "\($0)p"
-                                        },
-                                        selection: Binding(
-                                            get: { "\(selectedResolution)p" },
-                                            set: {
-                                                selectedResolution =
-                                                    $0.replacingOccurrences(
-                                                        of: "p",
-                                                        with: ""
-                                                    )
-                                            }
-                                        )
-                                    )
-
-                                    // Format picker (fixed)
-                                    GlassPickerView(
-                                        title: "Container",
-                                        options: videoFormatOptions.map {
-                                            $0.uppercased()
-                                        },
-                                        selection: Binding(
-                                            get: {
-                                                selectedVideoFormat.uppercased()
-                                            },
-                                            set: {
-                                                selectedVideoFormat =
-                                                    $0.lowercased()
-                                            }
-                                        )
-                                    )
-                                }
-                                .padding(16)
-                                .background(glassBackground)
-                                .transition(
-                                    .asymmetric(
-                                        insertion: .scale(scale: 0.95).combined(
-                                            with: .opacity
-                                        ),
-                                        removal: .scale(scale: 0.95).combined(
-                                            with: .opacity
-                                        )
-                                    )
-                                )
-                            }
-
-                            // Audio options
-                            if downloadType.wrappedValue != .video {
-                                VStack(alignment: .leading, spacing: 16) {
-                                    Text("Audio Options")
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
-
-                                    // Audio quality picker
-                                    GlassPickerView(
-                                        title: "Quality",
-                                        options: audioQualityOptions.map {
-                                            $0.label
-                                        },
-                                        selection: Binding(
-                                            get: {
-                                                audioQualityOptions.first(
-                                                    where: {
-                                                        $0.value
-                                                            == selectedAudioQuality
-                                                    })?.label ?? ""
-                                            },
-                                            set: { newLabel in
-                                                if let option =
-                                                    audioQualityOptions.first(
-                                                        where: {
-                                                            $0.label == newLabel
-                                                        })
-                                                {
-                                                    selectedAudioQuality =
-                                                        option.value
-                                                }
-                                            }
-                                        )
-                                    )
-
-                                    // Format picker (Audio only mode)
-                                    if downloadType.wrappedValue == .audio {
-                                        GlassPickerView(
-                                            title: "Format",
-                                            options: audioFormatOptions.map {
-                                                $0.label
-                                            },
-                                            selection: Binding(
-                                                get: {
-                                                    audioFormatOptions.first(
-                                                        where: {
-                                                            $0.value
-                                                                == selectedAudioFormat
-                                                        })?.label ?? ""
-                                                },
-                                                set: { newLabel in
-                                                    if let option =
-                                                        audioFormatOptions.first(
-                                                            where: {
-                                                                $0.label
-                                                                    == newLabel
-                                                            })
-                                                    {
-                                                        selectedAudioFormat =
-                                                            option.value
-                                                    }
-                                                }
-                                            )
-                                        )
-                                    }
-                                }
-                                .padding(16)
-                                .background(glassBackground)
-                                .transition(
-                                    .asymmetric(
-                                        insertion: .scale(scale: 0.95).combined(
-                                            with: .opacity
-                                        ),
-                                        removal: .scale(scale: 0.95).combined(
-                                            with: .opacity
-                                        )
-                                    )
-                                )
-                            }
-                        }
-                        .animation(
-                            .spring(response: 0.3, dampingFraction: 0.7),
-                            value: downloadType.wrappedValue
-                        )
-
-                        // Information disclosure (condensed)
-                        DisclosureGroup(isExpanded: $infoExpanded) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                InfoRow(
-                                    icon: "arrow.triangle.2.circlepath",
-                                    title: "Persistent defaults",
-                                    description:
-                                        "Every choice here becomes your new default, and carries over to the menu‑bar pop‑over."
-                                )
-
-                                InfoRow(
-                                    icon: "video.fill",
-                                    title: "Video formats and quality",
-                                    description:
-                                        "In Video modes, the highest-quality video track up to your selected resolution is fetched and packaged in your chosen container."
-                                )
-
-                                InfoRow(
-                                    icon: "music.note",
-                                    title: "Audio format and quality",
-                                    description:
-                                        "'Up to' will select the highest-quality audio stream whose bitrate is at or below X kbps."
-                                )
-
-                                InfoRow(
-                                    icon: "arrow.triangle.swap",
-                                    title: "Transcoding",
-                                    description:
-                                        "Only runs when you choose a different format: picking 'Source' uses the source directly."
-                                )
-
-                                InfoRow(
-                                    icon: "eye.slash",
-                                    title: "Hide & show",
-                                    description:
-                                        "Closing the window hides it (and the Dock icon); click the menu‑bar icon to bring it back."
-                                )
-                            }
-                            .padding(.top, 6)
-                        } label: {
-                            HStack {
-                                Text("Information")
-                                    .fontWeight(.medium)
-                                Spacer()
-                            }
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                withAnimation(.easeInOut) {
-                                    infoExpanded.toggle()
-                                }
-                            }
-                        }
-                        .padding(14)
-                        .background(glassBackground)
-                        
-                       
-                    }
-                    //                    .padding(18)
-                    .padding(.horizontal, 18)  // no top padding
-                    .padding(.bottom, 18)  // Extra bottom padding to ensure scrolling works properly
+            ScrollView {
+                VStack(spacing: 14) {
+                    setupBanner
+                    urlField.appear(0)
+                    typeSelector.appear(1)
+                    optionGroups.appear(2)
+                    saveLocation.appear(3)
+                    informationSection.appear(4)
                 }
-                
-                // Download button
-                VStack(spacing: 6) {
-                    Button {
-                        if isDownloading {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                stopDownload()
-                            }
-                        } else {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                startDownload()
-                            }
-                        }
-                    } label: {
-                        HStack {
-                            Spacer()
-                            if isDownloading {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(
-                                        .system(
-                                            size: 15,
-                                            weight: .medium
-                                        )
-                                    )
-                                Text("Cancel Download")
-                                    .font(
-                                        .system(
-                                            size: 15,
-                                            weight: .semibold
-                                        )
-                                    )
-                            } else {
-                                Image(
-                                    systemName: "arrow.down.circle.fill"
-                                )
-                                .font(
-                                    .system(size: 15, weight: .medium)
-                                )
-                                Text("Download")
-                                    .font(
-                                        .system(
-                                            size: 15,
-                                            weight: .semibold
-                                        )
-                                    )
-                            }
-                            Spacer()
-                        }
-                        .padding(.vertical, 14)
-                        .background(
-                            ZStack {
-                                if isDownloading {
-                                    LinearGradient(
-                                        gradient: Gradient(colors: [
-                                            Color.gray.opacity(0.8),
-                                            Color.gray.opacity(0.6),
-                                        ]),
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                } else {
-                                    brandGradient
-                                }
-                            }
-                            .clipShape(
-                                RoundedRectangle(
-                                    cornerRadius: 12,
-                                    style: .continuous
-                                )
-                            )
-                        )
-                        .foregroundColor(.white)
-                        .shadow(
-                            color: isDownloading
-                                ? Color.gray.opacity(0.3)
-                                : Color.red.opacity(0.4),
-                            radius: 6,
-                            x: 0,
-                            y: 3
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(videoURL.isEmpty && !isDownloading)
-                    .opacity(
-                        videoURL.isEmpty && !isDownloading ? 0.6 : 1.0
-                    )
-
-                    // Status indicator
-                    HStack(spacing: 10) {
-                        if isDownloading {
-                            ProgressView()
-                                .scaleEffect(0.5)
-                                .frame(width: 16, height: 16)
-                        } else {
-                            Image(systemName: "circle.fill")
-                                .foregroundColor(
-                                    downloadStatus == "Idle"
-                                        ? .green
-                                        : downloadStatus.contains(
-                                            "completed"
-                                        ) ? .green : .orange
-                                )
-                                .font(.system(size: 8))
-                        }
-
-                        // Status text
-                        Text(downloadStatus)
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                            .lineLimit(2)
-                            .fixedSize(
-                                horizontal: false,
-                                vertical: true
-                            )
-                    }
-                    .frame(height: 60)
-                    .animation(
-                        .easeInOut(duration: 0.2),
-                        value: isDownloading
-                    )
-                }
-                .padding(.top, 8)
-                .padding(.horizontal, 18)
+                .padding(.horizontal, 20)
+                .padding(.top, -6)
+                .padding(.bottom, 150)
+                .motion(value: deps.missing.isEmpty)
             }
             .scrollIndicators(.never)
-            .frame(width: 460, height: 700)
+            .scaleEffect(1 - 0.015 * trayExpansion, anchor: .top)
+            .blur(radius: 2 * trayExpansion)
+
+            Color.black.opacity(0.32 * trayExpansion)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+
+            VStack {
+                TitleBarRow(title: "Downer") {
+                    SettingsLink {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.primary)
+                    }
+                    .buttonStyle(GlassCircleButtonStyle())
+                    .help("Settings")
+                }
+                Spacer()
+            }
+
+            VStack {
+                Spacer()
+                if dl.needsTray {
+                    QueueTray(
+                        jobs: dl.jobs,
+                        status: dl.status,
+                        onCancelAll: { dl.cancelAll() },
+                        onRemove: { dl.remove($0) },
+                        onRetry: { dl.retry($0) },
+                        onRetryAll: { dl.retryAllFailed() },
+                        onReveal: { dl.revealFiles() },
+                        onDismiss: { withAnimation(Motion.standard(reduce: reduceMotion)) { dl.clearFinished() } },
+                        expansion: $trayExpansion,
+                        startsOpen: DownloadManager.previewTrayOpen
+                    )
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                } else {
+                    dock
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .padding(14)
+            .motion(value: dl.needsTray)
+            .onChange(of: dl.needsTray) { _, needs in if !needs { trayExpansion = 0 } }
         }
-        .tint(.red)
+        // 460 × 640 below the title bar; the window adds the title bar's own height
+        .frame(width: 460, height: 640)
+        .tint(Brand.red)
         .onChange(of: downloadType.wrappedValue) { oldType, newType in
             if newType != .audio {
                 selectedAudioFormat = "source"
@@ -658,9 +148,309 @@ struct MainAppView: View {
         }
     }
 
-    // MARK: - Helper Methods
-    private func numericAbr(_ quality: String) -> Int? {
-        Int(quality.replacingOccurrences(of: "k", with: ""))
+    // MARK: - Sections
+    @ViewBuilder
+    private var setupBanner: some View {
+        if !deps.missing.isEmpty {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Setup needed")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("\(deps.missing.map(\.title).joined(separator: ", ")) not found")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                SettingsLink { Text("Set up") }
+                    .buttonStyle(PillButtonStyle())
+            }
+            .padding(.leading, 14)
+            .padding(.trailing, 10)
+            .frame(height: 52)
+            .downerSurface()
+            .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+    }
+
+    private var urlField: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "link")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(urlFocused ? Brand.red : Color.secondary)
+
+            TextField("Enter video/playlist URL", text: $videoURL)
+                .textFieldStyle(.plain)
+                .font(.system(size: 15))
+                .focused($urlFocused)
+                .onSubmit(submit)
+
+            if !videoURL.isEmpty {
+                Button {
+                    videoURL = ""
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 26, height: 26)
+                        .background(Color.primary.opacity(0.10), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear URL")
+                .transition(.scale(scale: 0.6).combined(with: .opacity))
+            }
+        }
+        .padding(.leading, 18)
+        .padding(.trailing, 10)
+        .frame(height: 54)
+        .downerGlass(in: Capsule())
+        .overlay(Capsule().strokeBorder(Brand.red.opacity(urlFocused ? 0.55 : 0), lineWidth: 1.5))
+        .motion(Motion.quick, value: urlFocused)
+        .motion(Motion.quick, value: videoURL.isEmpty)
+    }
+
+    private var typeSelector: some View {
+        HStack(spacing: 0) {
+            ForEach(DownloadType.allCases) { type in
+                let selected = downloadType.wrappedValue == type
+                Button {
+                    withAnimation(Motion.standard(reduce: reduceMotion)) {
+                        downloadType.wrappedValue = type
+                    }
+                } label: {
+                    Text(type.rawValue)
+                        .font(.system(size: 13, weight: selected ? .semibold : .medium))
+                        .foregroundStyle(selected ? Color.primary : Color.primary.opacity(0.72))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 36)
+                        .background {
+                            if selected {
+                                Capsule()
+                                    .fill(colorScheme == .dark ? Color.white.opacity(0.20) : Color.white)
+                                    .shadow(color: .black.opacity(0.12), radius: 4, x: 0, y: 2)
+                                    .matchedGeometryEffect(id: "typeThumb", in: typeNamespace)
+                            }
+                        }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(3)
+        .frame(height: 42)
+        .downerGlass(in: Capsule())
+    }
+
+    @ViewBuilder
+    private var optionGroups: some View {
+        VStack(spacing: 14) {
+            if downloadType.wrappedValue != .audio {
+                OptionGroup(title: "Video") {
+                    OptionRow(
+                        title: "Resolution",
+                        options: resolutionOptions.map { "\($0)p" },
+                        selection: Binding(
+                            get: { "\(selectedResolution)p" },
+                            set: {
+                                selectedResolution = $0.replacingOccurrences(of: "p", with: "")
+                            }
+                        )
+                    )
+                    OptionRow(
+                        title: "Container",
+                        options: videoFormatOptions.map { $0.uppercased() },
+                        selection: Binding(
+                            get: { selectedVideoFormat.uppercased() },
+                            set: { selectedVideoFormat = $0.lowercased() }
+                        ),
+                        showsDivider: false
+                    )
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            }
+
+            if downloadType.wrappedValue != .video {
+                OptionGroup(title: "Audio") {
+                    OptionRow(
+                        title: "Quality",
+                        options: audioQualityOptions.map { $0.label },
+                        selection: Binding(
+                            get: {
+                                audioQualityOptions.first(where: { $0.value == selectedAudioQuality })?.label ?? ""
+                            },
+                            set: { newLabel in
+                                if let option = audioQualityOptions.first(where: { $0.label == newLabel }) {
+                                    selectedAudioQuality = option.value
+                                }
+                            }
+                        ),
+                        showsDivider: downloadType.wrappedValue == .audio
+                    )
+                    if downloadType.wrappedValue == .audio {
+                        OptionRow(
+                            title: "Format",
+                            options: audioFormatOptions.map { $0.label },
+                            selection: Binding(
+                                get: {
+                                    audioFormatOptions.first(where: { $0.value == selectedAudioFormat })?.label ?? ""
+                                },
+                                set: { newLabel in
+                                    if let option = audioFormatOptions.first(where: { $0.label == newLabel }) {
+                                        selectedAudioFormat = option.value
+                                    }
+                                }
+                            ),
+                            showsDivider: false
+                        )
+                    }
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            }
+        }
+        .motion(value: downloadType.wrappedValue)
+    }
+
+    private var saveLocation: some View {
+        OptionGroup(title: "Save to") {
+            HStack(spacing: 10) {
+                Image(systemName: "folder")
+                    .font(.system(size: 15))
+                    .foregroundStyle(.secondary)
+                Text(destinationFolder.relativePath)
+                    .font(.system(size: 14))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 8)
+                Button("Change", action: selectFolder)
+                    .buttonStyle(PillButtonStyle())
+            }
+            .padding(.leading, 14)
+            .padding(.trailing, 9)
+            .frame(height: 50)
+        }
+    }
+
+    private var informationSection: some View {
+        VStack(spacing: 8) {
+            Button {
+                withAnimation(Motion.standard(reduce: reduceMotion)) { infoExpanded.toggle() }
+            } label: {
+                HStack {
+                    Text("Information")
+                        .font(.system(size: 13, weight: .medium))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .rotationEffect(.degrees(infoExpanded ? 90 : 0))
+                }
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 14)
+                .frame(height: 30)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if infoExpanded {
+                VStack(alignment: .leading, spacing: 12) {
+                    InfoRow(
+                        icon: "arrow.triangle.2.circlepath",
+                        title: "Persistent defaults",
+                        description:
+                            "Every choice here becomes your new default, and carries over to the menu‑bar pop‑over."
+                    )
+                    InfoRow(
+                        icon: "video.fill",
+                        title: "Video formats and quality",
+                        description:
+                            "In Video modes, the highest-quality video track up to your selected resolution is fetched and packaged in your chosen container."
+                    )
+                    InfoRow(
+                        icon: "music.note",
+                        title: "Audio format and quality",
+                        description:
+                            "'Up to' will select the highest-quality audio stream whose bitrate is at or below X kbps."
+                    )
+                    InfoRow(
+                        icon: "arrow.triangle.swap",
+                        title: "Transcoding",
+                        description:
+                            "Only runs when you choose a different format: picking 'Source' uses the source directly."
+                    )
+                    InfoRow(
+                        icon: "eye.slash",
+                        title: "Hide & show",
+                        description:
+                            "Closing the window hides it (and the Dock icon); click the menu‑bar icon to bring it back."
+                    )
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .downerSurface()
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+
+    private var addsToQueue: Bool { !videoURL.isEmpty && dl.isActive }
+    private var cancels: Bool { videoURL.isEmpty && dl.isActive }
+
+    /// Adds what is in the field (one link or several) to the queue and clears it.
+    private func submit() {
+        guard !videoURL.isEmpty else { return }
+        if dl.add(videoURL) > 0 {
+            withAnimation(Motion.standard(reduce: reduceMotion)) { videoURL = "" }
+        }
+    }
+
+    private var dock: some View {
+        VStack(spacing: 10) {
+            Button {
+                withAnimation(Motion.standard(reduce: reduceMotion)) {
+                    if cancels { dl.cancelAll() } else { submit() }
+                }
+            } label: {
+                HStack(spacing: 9) {
+                    Image(systemName: cancels ? "xmark" : (addsToQueue ? "plus" : "arrow.down"))
+                        .font(.system(size: 15, weight: .bold))
+                        .contentTransition(.symbolEffect(.replace))
+                    Text(cancels ? "Cancel Download" : (addsToQueue ? "Add to Queue" : "Download"))
+                        .contentTransition(.opacity)
+                }
+                .motion(Motion.quick, value: cancels)
+                .motion(Motion.quick, value: addsToQueue)
+            }
+            .buttonStyle(DownloadButtonStyle(isCancel: cancels))
+            .keyboardShortcut(cancels ? nil : .defaultAction)
+            .disabled(videoURL.isEmpty && !dl.isActive)
+
+            if dl.isActive {
+                DownerProgressBar(value: dl.runningJob == nil ? nil : dl.progress)
+                    .padding(.horizontal, 14)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
+            }
+
+            DownloadStatusLine(
+                status: dl.status,
+                isDownloading: dl.isActive,
+                completions: dl.completions
+            )
+            .frame(minHeight: 18)
+
+            if !dl.lastFiles.isEmpty && !dl.isActive {
+                Button {
+                    dl.revealFiles()
+                } label: {
+                    Label("Show in Finder", systemImage: "folder")
+                }
+                .buttonStyle(PillButtonStyle())
+                .transition(.opacity.combined(with: .scale(scale: 0.94)))
+            }
+        }
+        .padding(12)
+        .motion(value: dl.isActive)
+        .motion(value: dl.lastFiles.isEmpty)
+        .downerDockGlass()
     }
 
     // MARK: Actions
@@ -675,279 +465,70 @@ struct MainAppView: View {
             }
         }
     }
-
-    private func stopDownload() {
-        currentProcess?.terminate()
-        currentProcess = nil
-        isDownloading = false
-        downloadStatus = "Download cancelled."
-    }
-
-    private func startDownload() {
-        withAnimation { isDownloading = true }
-        downloadStatus = "Starting download…"
-
-        // validate all paths first
-        guard FileManager.default.fileExists(atPath: destinationFolder.path)
-        else {
-            downloadStatus = "Destination folder not found."
-            isDownloading = false
-            return
-        }
-        guard FileManager.default.isExecutableFile(atPath: ytDlpPath) else {
-            downloadStatus = "yt‑dlp not found.\nCheck Settings → Tool Paths."
-            isDownloading = false
-            return
-        }
-        guard FileManager.default.isExecutableFile(atPath: ffmpegPath),
-            FileManager.default.isExecutableFile(atPath: ffprobePath)
-        else {
-            downloadStatus =
-                "ffmpeg / ffprobe not found.\nCheck Settings → Tool Paths."
-            isDownloading = false
-            return
-        }
-
-        let audioFilter: String = {
-            if selectedAudioQuality == "source" {  // best available
-                return "bestaudio"
-            }
-            if let abr = numericAbr(selectedAudioQuality) {  // cap at chosen ABR
-                return "bestaudio[abr<=\(abr)][vcodec=none]"
-            }
-            return "bestaudio"
-        }()
-
-        let formatOpt: String
-        switch downloadType.wrappedValue {
-
-        case .audio:
-            var fmt = "-f \"\(audioFilter)\""
-            if selectedAudioFormat != "source" {  // transcode only if asked
-                fmt += " --extract-audio --audio-format \(selectedAudioFormat)"
-                if let abr = numericAbr(selectedAudioQuality), abr <= 160 {
-                    fmt += " --audio-quality \(selectedAudioQuality)"
-                }
-            }
-            formatOpt = fmt
-
-        case .video:
-            formatOpt = """
-                -f "bestvideo[height<=\(selectedResolution)][acodec=none]" \
-                --remux-video \(selectedVideoFormat)
-                """
-
-        case .both:
-            formatOpt = """
-                -f "bestvideo[height<=\(selectedResolution)]+\(audioFilter)" \
-                --merge-output-format \(selectedVideoFormat)
-                """
-        }
-
-        let workDir = destinationFolder.path.escaped()
-        let ytCommand =
-            "\"\(ytDlpPath.escaped())\" \(formatOpt) \"\(videoURL.escaped())\""
-        let cmd = "cd \(workDir) && \(ytCommand)"
-
-        let proc = Process()
-        proc.launchPath = "/bin/zsh"
-        proc.arguments = ["-c", cmd]
-
-        var env = ProcessInfo.processInfo.environment
-        let ffmpegDir = (ffmpegPath as NSString).deletingLastPathComponent
-        env["PATH"] = "\(ffmpegDir):" + (env["PATH"] ?? "")
-        env["FFMPEG"] = ffmpegPath
-        env["FFPROBE"] = ffprobePath
-        proc.environment = env
-
-        let pipe = Pipe()
-        proc.standardOutput = pipe
-        proc.standardError = pipe
-        pipe.fileHandleForReading.readabilityHandler = { h in
-            let d = h.availableData
-            guard !d.isEmpty else {
-                h.readabilityHandler = nil
-                return
-            }
-
-            if let s = String(data: d, encoding: .utf8),
-                !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            {
-                DispatchQueue.main.async {
-                    downloadStatus = s.trimmingCharacters(in: .whitespacesAndNewlines)
-                }
-            }
-        }
-        proc.terminationHandler = { p in
-            pipe.fileHandleForReading.readabilityHandler = nil
-            DispatchQueue.main.async {
-                isDownloading = false
-                downloadStatus = p.terminationStatus == 0
-                    ? "Download completed."
-                    : "Download failed (code \(p.terminationStatus))."
-            }
-        }
-
-        currentProcess = proc
-        do { try proc.run() } catch {
-            downloadStatus = "Error: \(error.localizedDescription)"
-            isDownloading = false
-        }
-
-        // Revert to idle after 10 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
-            if !self.isDownloading {
-                self.downloadStatus = "Idle"
-            }
-        }
-    }
 }
 
 // MARK: - Supporting Views
-struct GlassPickerView: View {
+struct OptionGroup<Content: View>: View {
     let title: String
-    let options: [String]
-    @Binding var selection: String
-
-    @State private var isExpanded = false
+    @ViewBuilder var content: () -> Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .foregroundColor(.primary)
-                .font(.system(size: 14))
-
-            ZStack(alignment: .top) {
-                if isExpanded {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation(
-                                .spring(response: 0.25, dampingFraction: 0.7)
-                            ) {
-                                isExpanded = false
-                            }
-                        }
-                }
-
-                Button(action: {
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.7))
-                    {
-                        isExpanded.toggle()
-                    }
-                }) {
-                    HStack {
-                        Text(selection)
-                            .foregroundColor(.primary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
-                            .rotationEffect(.degrees(isExpanded ? 180 : 0))
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(.ultraThinMaterial)
-                            .overlay(
-                                RoundedRectangle(
-                                    cornerRadius: 10,
-                                    style: .continuous
-                                )
-                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                            )
-                    )
-                }
-                .buttonStyle(.plain)
-
-                if isExpanded {
-                    VStack(spacing: 0) {
-                        ForEach(options, id: \.self) { option in
-                            Button {
-                                withAnimation(
-                                    .spring(
-                                        response: 0.25,
-                                        dampingFraction: 0.7
-                                    )
-                                ) {
-                                    selection = option
-                                    isExpanded = false
-                                }
-                            } label: {
-                                ZStack(alignment: .leading) {
-                                    if selection == option {
-                                        RoundedRectangle(
-                                            cornerRadius: 10,
-                                            style: .continuous
-                                        )
-                                        .fill(Color.primary.opacity(0.1))
-                                        .padding(-1)
-                                    }
-
-                                    HStack {
-                                        Text(option)
-                                            .font(.system(size: 14))
-                                            .foregroundColor(
-                                                selection == option
-                                                    ? .red : .primary
-                                            )
-                                            .frame(
-                                                maxWidth: .infinity,
-                                                alignment: .leading
-                                            )
-
-                                        if selection == option {
-                                            Image(systemName: "checkmark")
-                                                .font(.system(size: 12))
-                                                .foregroundColor(.red)
-                                        }
-                                    }
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
-                                }
-                                .contentShape(
-                                    RoundedRectangle(
-                                        cornerRadius: 10,
-                                        style: .continuous
-                                    )
-                                )
-                            }
-                            .buttonStyle(.plain)
-
-                            if option != options.last {
-                                Divider().padding(.horizontal, 8)
-                                    .foregroundStyle(
-                                        Color.primary.opacity(0.15)
-                                    )
-                            }
-                        }
-                    }
-                    .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(.ultraThinMaterial)
-                            .overlay(
-                                RoundedRectangle(
-                                    cornerRadius: 10,
-                                    style: .continuous
-                                )
-                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                            )
-                            .shadow(
-                                color: Color.black.opacity(0.15),
-                                radius: 8,
-                                x: 0,
-                                y: 4
-                            )
-                    )
-                    .zIndex(1)
-                    .transition(.scale(scale: 0.95).combined(with: .opacity))
-                }
-            }
-            .compositingGroup()
-            .zIndex(isExpanded ? 2 : 0)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 14)
+            VStack(spacing: 0) { content() }
+                .downerSurface()
         }
-        .animation(.easeOut(duration: 0.2), value: isExpanded)
+    }
+}
+
+struct OptionRow: View {
+    let title: String
+    let options: [String]
+    @Binding var selection: String
+    var showsDivider = true
+
+    var body: some View {
+        HStack {
+            Text(title)
+                .font(.system(size: 14))
+            Spacer()
+            Menu {
+                Picker(title, selection: $selection) {
+                    ForEach(options, id: \.self) { Text($0).tag($0) }
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+            } label: {
+                HStack(spacing: 6) {
+                    Text(selection)
+                        .font(.system(size: 13, weight: .medium))
+                        .contentTransition(.opacity)
+                        .motion(Motion.quick, value: selection)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.leading, 12)
+                .padding(.trailing, 9)
+                .frame(height: 28)
+                .background(Color.primary.opacity(0.10), in: Capsule())
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .fixedSize()
+        }
+        .padding(.leading, 14)
+        .padding(.trailing, 9)
+        .frame(height: 46)
+        .overlay(alignment: .bottom) {
+            if showsDivider {
+                Divider().opacity(0.6).padding(.horizontal, 14)
+            }
+        }
     }
 }
 
@@ -960,7 +541,7 @@ struct InfoRow: View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: icon)
                 .font(.system(size: 13))
-                .foregroundColor(.red.opacity(0.8))
+                .foregroundColor(Brand.red.opacity(0.9))
                 .frame(width: 18)
 
             VStack(alignment: .leading, spacing: 3) {

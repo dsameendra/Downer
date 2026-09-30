@@ -6,19 +6,24 @@
 //
 
 import Cocoa
+import Combine
 import KeyboardShortcuts
 import SwiftUI
 
-class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+@MainActor
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverDelegate {
 
     static private(set) var shared: AppDelegate!  // singleton
 
     var mainWindow: NSWindow!
     var statusItem: NSStatusItem!
     var popover: NSPopover!
+    private var cancellables = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
+        AppearanceMode.apply(
+            UserDefaults.standard.string(forKey: AppearanceMode.storageKey) ?? "system")
 
         let hostVC = NSHostingController(rootView: MainAppView())
         let w = NSWindow(
@@ -28,11 +33,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             defer: false
         )
         w.contentViewController = hostVC
-        w.title = "Downer"
-        w.titleVisibility            = .visible
-        w.titlebarAppearsTransparent = true
-        w.isMovableByWindowBackground = true
-        w.backgroundColor            = .black
+        DownerWindowChrome.apply(to: w, title: "Downer")
         w.center()
         w.delegate = self
         w.makeKeyAndOrderFront(nil)
@@ -47,7 +48,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // build the menu‑bar pop‑over
         popover = NSPopover()
         popover.behavior = .transient
-        popover.contentSize = NSSize(width: 360, height: 200)
+        popover.delegate = self
+        popover.contentSize = NSSize(width: 360, height: 180)
         popover.contentViewController =
             NSHostingController(rootView: PopOverView())
 
@@ -55,24 +57,79 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             withLength: NSStatusItem.variableLength
         )
         if let btn = statusItem.button {
-            let cfg = NSImage.SymbolConfiguration(
-                pointSize: 16,
-                weight: .regular
-            )
-            btn.image = NSImage(
-                systemSymbolName: "chevron.down.square.fill",
-                accessibilityDescription: "Downer"
-            )?
-            .withSymbolConfiguration(cfg)
-            btn.image?.isTemplate = true
+            btn.image = MenuBarIcon.image(for: .idle)
+            btn.imagePosition = .imageLeading
             btn.sendAction(on: [.leftMouseUp, .rightMouseUp])
             btn.action = #selector(statusItemClicked(_:))
             btn.target = self
         }
 
+        // the icon follows the download: ring while running, check when done, dot when it needs you
+        let dl = DownloadManager.shared
+        let deps = DependencyManager.shared
+        dl.objectWillChange
+            .merge(with: deps.objectWillChange)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.updateStatusItem() }
+            .store(in: &cancellables)
+        dl.$completions
+            .dropFirst()
+            .sink { [weak self] _ in self?.flashDone() }
+            .store(in: &cancellables)
+
         // register global shortcut
         KeyboardShortcuts.onKeyDown(for: .downloadShortcut) { [weak self] in
             self?.togglePopover(nil)
+        }
+    }
+
+    // MARK: Menu bar icon
+    private var showingDone = false
+    private var lastIconState: MenuBarIcon.State?
+    private var lastTitle = ""
+
+    private func flashDone() {
+        showingDone = true
+        updateStatusItem()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { [weak self] in
+            self?.showingDone = false
+            self?.updateStatusItem()
+        }
+    }
+
+    private func updateStatusItem() {
+        guard let btn = statusItem.button else { return }
+        let dl = DownloadManager.shared
+        let deps = DependencyManager.shared
+
+        let state: MenuBarIcon.State
+        var title = ""
+        if dl.isActive {
+            state = .progress(dl.runningJob == nil ? nil : dl.progress)
+            if let label = dl.queueLabel {
+                title = " \(label)"
+            } else if let progress = dl.progress, dl.runningJob != nil {
+                title = " \(Int((progress * 100).rounded()))%"
+            }
+        } else if showingDone {
+            state = .done
+        } else if dl.hadError || (deps.hasCheckedOnce && !deps.missing.isEmpty) {
+            state = .attention
+        } else {
+            state = .idle
+        }
+
+        // only touch the button when something changed; redrawing it on every output line is wasteful
+        if state != lastIconState {
+            lastIconState = state
+            btn.image = MenuBarIcon.image(for: state)
+        }
+        if title != lastTitle {
+            lastTitle = title
+            btn.attributedTitle = NSAttributedString(
+                string: title,
+                attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)]
+            )
         }
     }
 
@@ -136,12 +193,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if popover.isShown {
             popover.performClose(sender)
         } else {
+            NSApp.activate(ignoringOtherApps: true)
             popover.show(
                 relativeTo: btn.bounds,
                 of: btn,
                 preferredEdge: .minY
             )
             popover.contentViewController?.view.window?.becomeKey()
+            NotificationCenter.default.post(name: .popoverWillShow, object: nil)
         }
     }
 
@@ -157,11 +216,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 defer: false
             )
             w.contentViewController = hostVC
-            w.title = "Downer"
-            w.titleVisibility            = .visible
-            w.titlebarAppearsTransparent = true
-            w.isMovableByWindowBackground = true
-            w.backgroundColor            = .black
+            DownerWindowChrome.apply(to: w, title: "Downer")
             w.isReleasedWhenClosed = false
             w.delegate = self
             mainWindow = w
