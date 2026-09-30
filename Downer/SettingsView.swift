@@ -23,9 +23,6 @@ struct SettingsView: View {
 
             AmbientBackground()
 
-            TitleBarRow(title: "Settings") { EmptyView() }
-                .frame(maxHeight: .infinity, alignment: .top)
-
             ScrollView {
                 VStack(spacing: 14) {
                     appearanceGroup.appear(0)
@@ -36,6 +33,10 @@ struct SettingsView: View {
                 .padding(.top, -4)
             }
             .scrollIndicators(.never)
+
+            // drawn last so the scroll view's edge blur never sits on top of the title
+            TitleBarRow(title: "Settings") { EmptyView() }
+                .frame(maxHeight: .infinity, alignment: .top)
         }
         .tint(Brand.red)
         .frame(width: 400, height: 405)
