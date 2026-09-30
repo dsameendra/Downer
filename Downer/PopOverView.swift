@@ -14,6 +14,16 @@ struct PopOverView: View {
     @FocusState private var urlFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    private var addsToQueue: Bool { !videoURL.isEmpty && dl.isActive }
+    private var cancels: Bool { videoURL.isEmpty && dl.isActive }
+
+    private func submit() {
+        guard !videoURL.isEmpty else { return }
+        if dl.add(videoURL) > 0 {
+            withAnimation(Motion.standard(reduce: reduceMotion)) { videoURL = "" }
+        }
+    }
+
     // MARK: - Body
     // NSPopover supplies the system glass behind this view, so no ground is drawn here.
     var body: some View {
@@ -27,7 +37,7 @@ struct PopOverView: View {
                     .textFieldStyle(.plain)
                     .font(.system(size: 14))
                     .focused($urlFocused)
-                    .onSubmit { if !videoURL.isEmpty && !dl.isDownloading { dl.start(url: videoURL) } }
+                    .onSubmit(submit)
 
                 if videoURL.isEmpty {
                     Button("Paste") {
@@ -47,25 +57,26 @@ struct PopOverView: View {
             .motion(Motion.quick, value: urlFocused)
             .motion(Motion.quick, value: videoURL.isEmpty)
 
-            Button(action: {
-                dl.isDownloading ? dl.cancel() : dl.start(url: videoURL)
-            }) {
+            Button {
+                if cancels { dl.cancelAll() } else { submit() }
+            } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: dl.isDownloading ? "xmark" : "arrow.down")
+                    Image(systemName: cancels ? "xmark" : (addsToQueue ? "plus" : "arrow.down"))
                         .font(.system(size: 14, weight: .bold))
                         .contentTransition(.symbolEffect(.replace))
-                    Text(dl.isDownloading ? "Cancel" : "Download")
+                    Text(cancels ? "Cancel" : (addsToQueue ? "Add to Queue" : "Download"))
                         .contentTransition(.opacity)
                 }
-                .motion(Motion.quick, value: dl.isDownloading)
+                .motion(Motion.quick, value: cancels)
+                .motion(Motion.quick, value: addsToQueue)
             }
-            .buttonStyle(DownloadButtonStyle(isCancel: dl.isDownloading, height: 46, flat: true))
-            .keyboardShortcut(dl.isDownloading ? nil : .defaultAction)
-            .disabled(videoURL.isEmpty && !dl.isDownloading)
+            .buttonStyle(DownloadButtonStyle(isCancel: cancels, height: 46, flat: true))
+            .keyboardShortcut(cancels ? nil : .defaultAction)
+            .disabled(videoURL.isEmpty && !dl.isActive)
 
             DownloadStatusLine(
                 status: dl.status,
-                isDownloading: dl.isDownloading,
+                isDownloading: dl.isActive,
                 completions: dl.completions
             )
             .frame(maxHeight: .infinity)

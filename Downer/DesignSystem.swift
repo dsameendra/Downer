@@ -30,7 +30,7 @@ enum Brand {
 
 /// Glass for the control layer: fields, selectors, docks, toolbar buttons.
 /// Content sections use `.downerSurface()` instead, so glass never sits on glass.
-private struct DownerGlass<S: InsettableShape>: ViewModifier {
+private struct DownerGlass<S: Shape>: ViewModifier {
     let shape: S
     var tint: Color?
     var interactive: Bool
@@ -41,13 +41,13 @@ private struct DownerGlass<S: InsettableShape>: ViewModifier {
         if reduceTransparency {
             content
                 .background(Color(nsColor: .controlBackgroundColor), in: shape)
-                .overlay(shape.strokeBorder(Color.primary.opacity(0.16), lineWidth: 1))
+                .overlay(shape.stroke(Color.primary.opacity(0.16), lineWidth: 1))
         } else if #available(macOS 26.0, *) {
             content.glassEffect(glass, in: shape)
         } else {
             content
                 .background(.ultraThinMaterial, in: shape)
-                .overlay(shape.strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5))
+                .overlay(shape.stroke(Color.primary.opacity(0.10), lineWidth: 0.5))
                 .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: 4)
         }
     }
@@ -82,12 +82,25 @@ private struct DownerSurface<S: InsettableShape>: ViewModifier {
 }
 
 extension View {
-    func downerGlass<S: InsettableShape>(
+    func downerGlass<S: Shape>(
         in shape: S,
         tint: Color? = nil,
         interactive: Bool = false
     ) -> some View {
         modifier(DownerGlass(shape: shape, tint: tint, interactive: interactive))
+    }
+
+    /// Glass for the bottom dock and tray. On macOS 26+ its corners are concentric with the
+    /// window's own corners (inset by the padding around it); earlier systems get a fixed radius.
+    @ViewBuilder
+    func downerDockGlass() -> some View {
+        if #available(macOS 26.0, *) {
+            let shape = ConcentricRectangle(corners: .concentric(minimum: 20), isUniform: true)
+            self.clipShape(shape).downerGlass(in: shape)
+        } else {
+            let shape = RoundedRectangle(cornerRadius: 26, style: .continuous)
+            self.clipShape(shape).downerGlass(in: shape)
+        }
     }
 
     func downerSurface(cornerRadius: CGFloat = 18) -> some View {
@@ -449,5 +462,50 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
     /// Applies to every window and the menu bar popover.
     static func apply(_ raw: String) {
         NSApp.appearance = (AppearanceMode(rawValue: raw) ?? .system).nsAppearance
+    }
+}
+
+// MARK: - Window chrome
+
+/// One title bar for every Downer window: no title text, and an empty unified
+/// toolbar so the traffic lights sit in a taller bar on the same centre line as
+/// the controls drawn next to them.
+@MainActor
+enum DownerWindowChrome {
+    static func apply(to w: NSWindow, title: String) {
+        w.title = title  // still used by Mission Control and accessibility
+        w.titleVisibility = .hidden
+        w.titlebarAppearsTransparent = true
+        w.isMovableByWindowBackground = true
+        w.backgroundColor = .clear
+        guard w.toolbar == nil else { return }  // apply() can run more than once
+        let toolbar = NSToolbar(identifier: "DownerToolbar")
+        w.toolbar = toolbar
+        w.toolbarStyle = .unified
+    }
+}
+
+/// The row that shares the traffic lights' centre line (26 pt from the top): a centred
+/// title, and optional controls on the trailing edge with the same 20 pt inset the lights have.
+struct TitleBarRow<Trailing: View>: View {
+    let title: String
+    @ViewBuilder var trailing: () -> Trailing
+
+    var body: some View {
+        ZStack {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.primary.opacity(0.8))
+                .allowsHitTesting(false)
+                .accessibilityAddTraits(.isHeader)
+            HStack {
+                Spacer()
+                trailing()
+            }
+            .padding(.trailing, 20)
+        }
+        .frame(height: 52)
+        .frame(maxWidth: .infinity)
+        .ignoresSafeArea(.container, edges: .top)
     }
 }

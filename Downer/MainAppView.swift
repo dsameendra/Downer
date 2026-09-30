@@ -88,7 +88,7 @@ struct MainAppView: View {
                     informationSection.appear(4)
                 }
                 .padding(.horizontal, 20)
-                .padding(.top, 54)
+                .padding(.top, -6)
                 .padding(.bottom, 150)
                 .motion(value: deps.missing.isEmpty)
             }
@@ -101,8 +101,7 @@ struct MainAppView: View {
                 .allowsHitTesting(false)
 
             VStack {
-                HStack {
-                    Spacer()
+                TitleBarRow(title: "Downer") {
                     SettingsLink {
                         Image(systemName: "slider.horizontal.3")
                             .font(.system(size: 14, weight: .medium))
@@ -111,23 +110,23 @@ struct MainAppView: View {
                     .buttonStyle(GlassCircleButtonStyle())
                     .help("Settings")
                 }
-                .padding(.top, 8)
-                .padding(.trailing, 16)
                 Spacer()
             }
 
             VStack {
                 Spacer()
-                if let playlist = dl.playlist {
-                    PlaylistTray(
-                        playlist: playlist,
-                        isDownloading: dl.isDownloading,
+                if dl.needsTray {
+                    QueueTray(
+                        jobs: dl.jobs,
                         status: dl.status,
-                        onCancel: { dl.cancel() },
-                        onRetry: { dl.retryFailed() },
-                        onReveal: { dl.revealLastFile() },
-                        onDismiss: { withAnimation(Motion.standard(reduce: reduceMotion)) { dl.dismissPlaylist() } },
-                        expansion: $trayExpansion
+                        onCancelAll: { dl.cancelAll() },
+                        onRemove: { dl.remove($0) },
+                        onRetry: { dl.retry($0) },
+                        onRetryAll: { dl.retryAllFailed() },
+                        onReveal: { dl.revealFiles() },
+                        onDismiss: { withAnimation(Motion.standard(reduce: reduceMotion)) { dl.clearFinished() } },
+                        expansion: $trayExpansion,
+                        startsOpen: DownloadManager.previewTrayOpen
                     )
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 } else {
@@ -136,10 +135,11 @@ struct MainAppView: View {
                 }
             }
             .padding(14)
-            .motion(value: dl.playlist != nil)
-            .onChange(of: dl.playlist == nil) { _, none in if none { trayExpansion = 0 } }
+            .motion(value: dl.needsTray)
+            .onChange(of: dl.needsTray) { _, needs in if !needs { trayExpansion = 0 } }
         }
-        .frame(width: 460, height: 700)
+        // 460 × 640 below the title bar; the window adds the title bar's own height
+        .frame(width: 460, height: 640)
         .tint(Brand.red)
         .onChange(of: downloadType.wrappedValue) { oldType, newType in
             if newType != .audio {
@@ -184,7 +184,7 @@ struct MainAppView: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: 15))
                 .focused($urlFocused)
-                .onSubmit { if !videoURL.isEmpty && !dl.isDownloading { dl.start(url: videoURL) } }
+                .onSubmit(submit)
 
             if !videoURL.isEmpty {
                 Button {
@@ -392,42 +392,54 @@ struct MainAppView: View {
         }
     }
 
+    private var addsToQueue: Bool { !videoURL.isEmpty && dl.isActive }
+    private var cancels: Bool { videoURL.isEmpty && dl.isActive }
+
+    /// Adds what is in the field (one link or several) to the queue and clears it.
+    private func submit() {
+        guard !videoURL.isEmpty else { return }
+        if dl.add(videoURL) > 0 {
+            withAnimation(Motion.standard(reduce: reduceMotion)) { videoURL = "" }
+        }
+    }
+
     private var dock: some View {
         VStack(spacing: 10) {
             Button {
                 withAnimation(Motion.standard(reduce: reduceMotion)) {
-                    if dl.isDownloading { dl.cancel() } else { dl.start(url: videoURL) }
+                    if cancels { dl.cancelAll() } else { submit() }
                 }
             } label: {
                 HStack(spacing: 9) {
-                    Image(systemName: dl.isDownloading ? "xmark" : "arrow.down")
+                    Image(systemName: cancels ? "xmark" : (addsToQueue ? "plus" : "arrow.down"))
                         .font(.system(size: 15, weight: .bold))
                         .contentTransition(.symbolEffect(.replace))
-                    Text(dl.isDownloading ? "Cancel Download" : "Download")
+                    Text(cancels ? "Cancel Download" : (addsToQueue ? "Add to Queue" : "Download"))
                         .contentTransition(.opacity)
                 }
-                .motion(Motion.quick, value: dl.isDownloading)
+                .motion(Motion.quick, value: cancels)
+                .motion(Motion.quick, value: addsToQueue)
             }
-            .buttonStyle(DownloadButtonStyle(isCancel: dl.isDownloading))
-            .keyboardShortcut(dl.isDownloading ? nil : .defaultAction)
-            .disabled(videoURL.isEmpty && !dl.isDownloading)
+            .buttonStyle(DownloadButtonStyle(isCancel: cancels))
+            .keyboardShortcut(cancels ? nil : .defaultAction)
+            .disabled(videoURL.isEmpty && !dl.isActive)
 
-            if dl.isDownloading {
-                DownerProgressBar(value: dl.progress)
+            if dl.isActive {
+                DownerProgressBar(value: dl.runningJob == nil ? nil : dl.progress)
                     .padding(.horizontal, 14)
-                .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
+                    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
             }
 
             DownloadStatusLine(
                 status: dl.status,
-                isDownloading: dl.isDownloading,
+                isDownloading: dl.isActive,
                 completions: dl.completions
             )
             .frame(minHeight: 18)
 
-            if dl.lastFile != nil && !dl.isDownloading {
+            if !dl.lastFiles.isEmpty && !dl.isActive {
                 Button {
-                    dl.revealLastFile()
+                    dl.revealFiles()
                 } label: {
                     Label("Show in Finder", systemImage: "folder")
                 }
@@ -436,9 +448,9 @@ struct MainAppView: View {
             }
         }
         .padding(12)
-        .motion(value: dl.isDownloading)
-        .motion(value: dl.lastFile)
-        .downerGlass(in: RoundedRectangle(cornerRadius: 34, style: .continuous))
+        .motion(value: dl.isActive)
+        .motion(value: dl.lastFiles.isEmpty)
+        .downerDockGlass()
     }
 
     // MARK: Actions
@@ -453,7 +465,6 @@ struct MainAppView: View {
             }
         }
     }
-
 }
 
 // MARK: - Supporting Views

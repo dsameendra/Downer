@@ -18,14 +18,13 @@ struct SettingsView: View {
         ZStack {
             // fix title and colors as soon as it's available to edit
             WindowAccessor { window in
-                window.title = "Settings"
-                window.titleVisibility = .visible
-                window.titlebarAppearsTransparent = true
-                window.isMovableByWindowBackground = true
-                window.backgroundColor = .clear
+                MainActor.assumeIsolated { DownerWindowChrome.apply(to: window, title: "Settings") }
             }
 
             AmbientBackground()
+
+            TitleBarRow(title: "Settings") { EmptyView() }
+                .frame(maxHeight: .infinity, alignment: .top)
 
             ScrollView {
                 VStack(spacing: 14) {
@@ -34,12 +33,12 @@ struct SettingsView: View {
                     requirementsGroup.appear(2)
                 }
                 .padding(16)
-                .padding(.top, 14)
+                .padding(.top, -4)
             }
             .scrollIndicators(.never)
         }
         .tint(Brand.red)
-        .frame(width: 400, height: 470)
+        .frame(width: 400, height: 405)
         .onAppear { deps.refresh() }
     }
 

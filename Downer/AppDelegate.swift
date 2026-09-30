@@ -33,11 +33,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             defer: false
         )
         w.contentViewController = hostVC
-        w.title = "Downer"
-        w.titleVisibility            = .visible
-        w.titlebarAppearsTransparent = true
-        w.isMovableByWindowBackground = true
-        w.backgroundColor            = .clear
+        DownerWindowChrome.apply(to: w, title: "Downer")
         w.center()
         w.delegate = self
         w.makeKeyAndOrderFront(nil)
@@ -108,11 +104,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
 
         let state: MenuBarIcon.State
         var title = ""
-        if dl.isDownloading {
-            state = .progress(dl.progress)
-            if let playlist = dl.playlist, let current = playlist.current {
-                title = " \(current)/\(playlist.total)"
-            } else if let progress = dl.progress {
+        if dl.isActive {
+            state = .progress(dl.runningJob == nil ? nil : dl.progress)
+            if let label = dl.queueLabel {
+                title = " \(label)"
+            } else if let progress = dl.progress, dl.runningJob != nil {
                 title = " \(Int((progress * 100).rounded()))%"
             }
         } else if showingDone {
@@ -220,11 +216,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
                 defer: false
             )
             w.contentViewController = hostVC
-            w.title = "Downer"
-            w.titleVisibility            = .visible
-            w.titlebarAppearsTransparent = true
-            w.isMovableByWindowBackground = true
-            w.backgroundColor            = .clear
+            DownerWindowChrome.apply(to: w, title: "Downer")
             w.isReleasedWhenClosed = false
             w.delegate = self
             mainWindow = w
