@@ -18,6 +18,8 @@ Liquid Glass redesign of Downer, approved from the "Downer Liquid Glass" design 
 - Main window 460×700: URL capsule, type selector, Video / Audio groups, Save to, Information, floating dock (Download, progress, status).
 - Menu bar popover 360×180: system-drawn background, URL field with Paste, Download, status.
 - Settings 400×560: Appearance (theme, glow), Global Shortcut, Requirements (yt-dlp, ffmpeg, ffprobe with Install).
+- Playlist tray: playlists only. The dock becomes a tray with a drag handle (peek 162, list 452, full 604 pt). Peek shows title, ring, overall bar and current item; pulled up shows every item with its state and Retry for failures. Single videos keep the dock.
+- Menu bar icon (`MenuBarIcon.swift`): the app icon's double chevron as a template image; a progress ring while downloading (percentage, or item/total for playlists), a check for two seconds when done, an orange dot when a tool is missing or a run failed.
 - App icon: layered `Downer.icon` (gradient plate, two glass chevron layers), Default / Dark / Clear / Tinted.
 
 ## Do not

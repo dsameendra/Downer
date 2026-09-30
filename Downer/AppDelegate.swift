@@ -10,6 +10,7 @@ import Combine
 import KeyboardShortcuts
 import SwiftUI
 
+@MainActor
 class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverDelegate {
 
     static private(set) var shared: AppDelegate!  // singleton
@@ -60,42 +61,79 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             withLength: NSStatusItem.variableLength
         )
         if let btn = statusItem.button {
-            let cfg = NSImage.SymbolConfiguration(
-                pointSize: 16,
-                weight: .regular
-            )
-            btn.image = NSImage(
-                systemSymbolName: "chevron.down.square.fill",
-                accessibilityDescription: "Downer"
-            )?
-            .withSymbolConfiguration(cfg)
-            btn.image?.isTemplate = true
+            btn.image = MenuBarIcon.image(for: .idle)
+            btn.imagePosition = .imageLeading
             btn.sendAction(on: [.leftMouseUp, .rightMouseUp])
             btn.action = #selector(statusItemClicked(_:))
             btn.target = self
         }
 
-        // show live progress next to the menu bar icon
+        // the icon follows the download: ring while running, check when done, dot when it needs you
         let dl = DownloadManager.shared
-        Publishers.CombineLatest(dl.$isDownloading, dl.$progress)
+        let deps = DependencyManager.shared
+        dl.objectWillChange
+            .merge(with: deps.objectWillChange)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] downloading, progress in
-                guard let btn = self?.statusItem.button else { return }
-                if downloading {
-                    let text = progress.map { " \(Int(($0 * 100).rounded()))%" } ?? " …"
-                    btn.attributedTitle = NSAttributedString(
-                        string: text,
-                        attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)]
-                    )
-                } else {
-                    btn.title = ""
-                }
-            }
+            .sink { [weak self] _ in self?.updateStatusItem() }
+            .store(in: &cancellables)
+        dl.$completions
+            .dropFirst()
+            .sink { [weak self] _ in self?.flashDone() }
             .store(in: &cancellables)
 
         // register global shortcut
         KeyboardShortcuts.onKeyDown(for: .downloadShortcut) { [weak self] in
             self?.togglePopover(nil)
+        }
+    }
+
+    // MARK: Menu bar icon
+    private var showingDone = false
+    private var lastIconState: MenuBarIcon.State?
+    private var lastTitle = ""
+
+    private func flashDone() {
+        showingDone = true
+        updateStatusItem()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { [weak self] in
+            self?.showingDone = false
+            self?.updateStatusItem()
+        }
+    }
+
+    private func updateStatusItem() {
+        guard let btn = statusItem.button else { return }
+        let dl = DownloadManager.shared
+        let deps = DependencyManager.shared
+
+        let state: MenuBarIcon.State
+        var title = ""
+        if dl.isDownloading {
+            state = .progress(dl.progress)
+            if let playlist = dl.playlist, let current = playlist.current {
+                title = " \(current)/\(playlist.total)"
+            } else if let progress = dl.progress {
+                title = " \(Int((progress * 100).rounded()))%"
+            }
+        } else if showingDone {
+            state = .done
+        } else if dl.hadError || (deps.hasCheckedOnce && !deps.missing.isEmpty) {
+            state = .attention
+        } else {
+            state = .idle
+        }
+
+        // only touch the button when something changed; redrawing it on every output line is wasteful
+        if state != lastIconState {
+            lastIconState = state
+            btn.image = MenuBarIcon.image(for: state)
+        }
+        if title != lastTitle {
+            lastTitle = title
+            btn.attributedTitle = NSAttributedString(
+                string: title,
+                attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)]
+            )
         }
     }
 
