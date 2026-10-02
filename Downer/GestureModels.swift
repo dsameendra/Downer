@@ -161,8 +161,13 @@ struct SwipeReveal {
     var offset: CGFloat { pan.value }
 
     mutating func begin(open: Bool, time: TimeInterval = 0) {
-        pan.begin(at: open ? -actionWidth : 0, time: time)
-        crossedCommit = false
+        begin(at: open ? -actionWidth : 0, time: time)
+    }
+
+    /// Start from wherever the row is on screen, e.g. grabbed in the middle of a settle.
+    mutating func begin(at offset: CGFloat, time: TimeInterval = 0) {
+        pan.begin(at: offset, time: time)
+        crossedCommit = offset <= -commitDistance
     }
 
     /// Returns true on the move that crosses the commit threshold in either direction,

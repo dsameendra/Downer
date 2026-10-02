@@ -19,6 +19,8 @@ final class SpringDriver: NSObject {
     /// The most recent value handed to `onUpdate`.
     private(set) var value: CGFloat = 0
     var onUpdate: (CGFloat) -> Void = { _ in }
+    /// Called once when a settle reaches its target (not when stopped by a new gesture).
+    var onFinish: () -> Void = {}
     var isRunning: Bool { spring != nil }
 
     func animate(from origin: CGFloat, to target: CGFloat, velocity: CGFloat, stiffness: CGFloat = 220) {
@@ -48,6 +50,7 @@ final class SpringDriver: NSObject {
             value = spring.target
             onUpdate(value)
             stop()
+            onFinish()
         } else {
             value = spring.position(at: t)
             onUpdate(value)

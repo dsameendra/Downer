@@ -50,11 +50,12 @@ struct SettingsView: View {
                 Text("Theme")
                     .font(.system(size: 14))
                 Spacer(minLength: 0)
-                Picker("Theme", selection: $appearanceRaw) {
-                    ForEach(AppearanceMode.allCases) { Text($0.title).tag($0.rawValue) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
+                GlassSegmentedControl(
+                    options: AppearanceMode.allCases.map { .init(value: $0, title: $0.title) },
+                    selection: Binding(
+                        get: { AppearanceMode(rawValue: appearanceRaw) ?? .system },
+                        set: { appearanceRaw = $0.rawValue }),
+                    height: 32, fontSize: 12, label: "Theme")
                 .frame(width: 210)
             }
             .padding(.leading, 14)

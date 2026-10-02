@@ -183,6 +183,16 @@ final class DownloadManager: ObservableObject {
         }
     }
 
+    /// Show one job's files in Finder.
+    func reveal(job id: UUID) {
+        guard let job = jobs.first(where: { $0.id == id }) else { return }
+        if job.files.isEmpty {
+            NSWorkspace.shared.open(job.options.folder)
+        } else {
+            NSWorkspace.shared.activateFileViewerSelecting(job.files)
+        }
+    }
+
     func revealFiles() {
         let files = lastFiles
         if files.isEmpty {

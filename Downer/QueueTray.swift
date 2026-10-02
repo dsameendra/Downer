@@ -18,6 +18,7 @@ struct QueueTray: View {
     let onRetry: (UUID) -> Void
     let onRetryAll: () -> Void
     let onReveal: () -> Void
+    let onRevealJob: (UUID) -> Void
     let onDismiss: () -> Void
     /// 0 when peeking … 1 when fully open. The window behind dims with it.
     @Binding var expansion: CGFloat
@@ -44,6 +45,7 @@ struct QueueTray: View {
     @State private var lastTranslation: CGFloat?
     @State private var driver = SpringDriver()
     @State private var probe = ScrollProbe()
+    @State private var openRow: UUID?
     @State private var collapsed: Set<UUID> = []
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -223,21 +225,48 @@ struct QueueTray: View {
         .motion(Motion.quick, value: currentTitle)
     }
 
+    /// What a swipe on this row offers. The last action is what a full swipe does.
+    private func swipeActions(for job: DownloadJob) -> [SwipeAction] {
+        let remove = SwipeAction(
+            id: "remove", title: job.state == .running ? "Cancel" : (job.isFinished ? "Clear" : "Remove"),
+            systemImage: job.state == .running ? "xmark" : "trash", tint: .red,
+            handler: { onRemove(job.id) })
+        switch job.state {
+        case .queued, .running:
+            return [remove]
+        case .failed, .cancelled:
+            return [SwipeAction(id: "retry", title: "Retry", systemImage: "arrow.clockwise", tint: .orange,
+                                handler: { onRetry(job.id) }), remove]
+        case .done:
+            return [SwipeAction(id: "reveal", title: "Show", systemImage: "folder", tint: .blue,
+                                handler: { onRevealJob(job.id) }), remove]
+        }
+    }
+
     private var itemList: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(jobs) { job in
+                        let open = openRow == job.id
+                        let setOpen: (Bool) -> Void = { isOpen in
+                            if isOpen { openRow = job.id } else if openRow == job.id { openRow = nil }
+                        }
                         if job.isPlaylist {
                             PlaylistSection(
                                 job: job,
                                 isCollapsed: collapsed.contains(job.id),
+                                actions: swipeActions(for: job),
+                                isOpen: open,
+                                onOpenChange: setOpen,
                                 onToggle: { toggleCollapse(job.id) },
                                 onRemove: { onRemove(job.id) },
                                 onRetry: { onRetry(job.id) })
                         } else {
-                            JobRow(job: job, onRemove: { onRemove(job.id) }, onRetry: { onRetry(job.id) })
-                                .id(job.id.uuidString)
+                            SwipeActionsRow(actions: swipeActions(for: job), isOpen: open, onOpenChange: setOpen) {
+                                JobRow(job: job, onRemove: { onRemove(job.id) }, onRetry: { onRetry(job.id) })
+                            }
+                            .id(job.id.uuidString)
                         }
                     }
                 }
@@ -545,12 +574,16 @@ private struct JobRow: View {
 private struct PlaylistSection: View {
     let job: DownloadJob
     let isCollapsed: Bool
+    let actions: [SwipeAction]
+    let isOpen: Bool
+    let onOpenChange: (Bool) -> Void
     let onToggle: () -> Void
     let onRemove: () -> Void
     let onRetry: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
+            SwipeActionsRow(actions: actions, isOpen: isOpen, onOpenChange: onOpenChange) {
             Button(action: onToggle) {
                 HStack(spacing: 12) {
                     Image(systemName: "music.note.list")
@@ -585,6 +618,7 @@ private struct PlaylistSection: View {
             .overlay(alignment: .bottom) { Divider().opacity(0.5) }
             .accessibilityLabel("\(job.displayTitle), playlist")
             .accessibilityHint(isCollapsed ? "Show videos" : "Hide videos")
+            }
 
             if !isCollapsed, let playlist = job.playlist {
                 ForEach(playlist.items) { item in

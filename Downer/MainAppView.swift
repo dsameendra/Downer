@@ -33,7 +33,6 @@ struct MainAppView: View {
 
     @State private var videoURL = ""
     @State private var infoExpanded = false
-    @Namespace private var typeNamespace
     @FocusState private var urlFocused: Bool
     @State private var trayExpansion: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -124,6 +123,7 @@ struct MainAppView: View {
                     onRetry: { dl.retry($0) },
                     onRetryAll: { dl.retryAllFailed() },
                     onReveal: { dl.revealFiles() },
+                    onRevealJob: { dl.reveal(job: $0) },
                     onDismiss: { withAnimation(Motion.standard(reduce: reduceMotion)) { dl.clearFinished() } },
                     expansion: $trayExpansion,
                     startsOpen: DownloadManager.previewTrayOpen,
@@ -209,35 +209,10 @@ struct MainAppView: View {
     }
 
     private var typeSelector: some View {
-        HStack(spacing: 0) {
-            ForEach(DownloadType.allCases) { type in
-                let selected = downloadType.wrappedValue == type
-                Button {
-                    withAnimation(Motion.standard(reduce: reduceMotion)) {
-                        downloadType.wrappedValue = type
-                    }
-                } label: {
-                    Text(type.rawValue)
-                        .font(.system(size: 13, weight: selected ? .semibold : .medium))
-                        .foregroundStyle(selected ? Color.primary : Color.primary.opacity(0.72))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 36)
-                        .background {
-                            if selected {
-                                Capsule()
-                                    .fill(colorScheme == .dark ? Color.white.opacity(0.20) : Color.white)
-                                    .shadow(color: .black.opacity(0.12), radius: 4, x: 0, y: 2)
-                                    .matchedGeometryEffect(id: "typeThumb", in: typeNamespace)
-                            }
-                        }
-                        .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(3)
-        .frame(height: 42)
-        .downerGlass(in: Capsule())
+        GlassSegmentedControl(
+            options: DownloadType.allCases.map { .init(value: $0, title: $0.rawValue) },
+            selection: downloadType,
+            label: "Download type")
     }
 
     @ViewBuilder
