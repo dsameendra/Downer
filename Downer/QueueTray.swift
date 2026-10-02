@@ -23,14 +23,21 @@ struct QueueTray: View {
     @Binding var expansion: CGFloat
     /// Opens the tray at launch; used for previews and tests.
     var startsOpen = false
+    /// True when the panel shows the queue; false when it shows the single-download dock. Same glass
+    /// either way: switching animates its height and cross-fades the contents, so it truly morphs.
+    var isTray = true
+    /// The dock's contents (its own padding included), shown while `isTray` is false.
+    var dock: AnyView = AnyView(EmptyView())
 
     private static let peek: CGFloat = 162
     private static let list: CGFloat = 452
     private static let full: CGFloat = 604
     private static let detents: [CGFloat] = [peek, list, full]
 
-    /// The tray's height on screen. Driven by the fingers while they are down, and by `driver` after.
+    /// The panel's height on screen. Driven by the fingers while they are down, and by `driver` after.
     @State private var height: CGFloat = QueueTray.peek
+    /// How tall the dock's contents want to be.
+    @State private var dockHeight: CGFloat = 130
     @State private var pan = SnapPan(
         points: QueueTray.detents, rubberRange: 40, decelerationRate: Motion.deceleration)
     @State private var panStart: CGFloat = QueueTray.peek
@@ -51,6 +58,53 @@ struct QueueTray: View {
     }
 
     var body: some View {
+        ZStack(alignment: .top) {
+            trayLayout
+                .opacity(isTray ? 1 : 0)
+                .animation(reduceMotion ? Motion.reduced : .easeIn(duration: 0.18).delay(0.07), value: isTray)
+                .allowsHitTesting(isTray)
+            dock
+                .fixedSize(horizontal: false, vertical: true)
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(key: DockHeightKey.self, value: proxy.size.height)
+                    }
+                )
+                .opacity(isTray ? 0 : 1)
+                .animation(reduceMotion ? Motion.reduced : .easeOut(duration: 0.1), value: isTray)
+                .allowsHitTesting(!isTray)
+        }
+        .frame(height: height, alignment: .top)
+        .background(TrackpadScrollRegion(handlers: scrollHandlers))
+        .downerDockGlass()
+        .onPreferenceChange(DockHeightKey.self) { measured in
+            dockHeight = measured
+            if !isTray, !driver.isRunning { withAnimation(Motion.standard(reduce: reduceMotion)) { height = measured } }
+        }
+        .onChange(of: height) { _, _ in
+            expansion = min(1, max(0, (height - Self.peek) / (Self.list - Self.peek)))
+        }
+        .onChange(of: isTray) { _, tray in
+            // the same glass grows into the tray, or shrinks back into the dock
+            let current = driver.isRunning ? driver.stop() : height
+            height = current
+            let target = tray ? Self.peek : dockHeight
+            if reduceMotion {
+                withAnimation(Motion.reduced) { height = target }
+            } else {
+                driver.animate(from: current, to: target, velocity: 0)
+            }
+        }
+        .onAppear {
+            driver.onUpdate = { height = $0 }
+            height = isTray ? (startsOpen ? Self.list : Self.peek) : dockHeight
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Download queue")
+    }
+
+    // MARK: Pieces
+    private var trayLayout: some View {
         VStack(spacing: 0) {
             handle
             header
@@ -65,21 +119,8 @@ struct QueueTray: View {
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 14)
-        .frame(height: height, alignment: .top)
-        .background(TrackpadScrollRegion(handlers: scrollHandlers))
-        .downerDockGlass()
-        .onChange(of: height) { _, _ in
-            expansion = min(1, max(0, (height - Self.peek) / (Self.list - Self.peek)))
-        }
-        .onAppear {
-            driver.onUpdate = { height = $0 }
-            if startsOpen { height = Self.list }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Download queue")
     }
 
-    // MARK: Pieces
     private var handle: some View {
         Capsule()
             .fill(Color.primary.opacity(0.3))
@@ -329,7 +370,7 @@ struct QueueTray: View {
         var h = TrackpadScrollHandlers()
         // a vertical swipe belongs to the tray unless the list underneath should scroll
         h.decide = { intent in
-            guard intent.axis == .vertical else { return false }
+            guard isTray, intent.axis == .vertical else { return false }
             debugLog("decide height=\(height) atTop=\(probe.isAtTop) up=\(intent.up) offset=\(probe.debugOffset)")
             return SheetScrollArbiter.owner(
                 sheetHeight: height, fullHeight: Self.full, listVisible: height > Self.peek + 1,
@@ -340,7 +381,7 @@ struct QueueTray: View {
         h.ended = { time in endPan(at: time) }
         // a mouse wheel notch steps one position
         h.discrete = { _, up in
-            guard abs(up) > 0.01 else { return false }
+            guard isTray, abs(up) > 0.01 else { return false }
             if driver.isRunning { return true }  // swallow notches while it is settling
             let owner = SheetScrollArbiter.owner(
                 sheetHeight: height, fullHeight: Self.full, listVisible: height > Self.peek + 1,
@@ -354,7 +395,7 @@ struct QueueTray: View {
         }
         // Esc folds the tray away
         h.escape = {
-            guard height > Self.peek + 1 else { return false }
+            guard isTray, height > Self.peek + 1 else { return false }
             animate(to: Self.peek)
             return true
         }
@@ -682,4 +723,9 @@ private struct RemoveButton: View {
         .accessibilityLabel(label)
         .motion(Motion.quick, value: hovering)
     }
+}
+
+private struct DockHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 130
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }

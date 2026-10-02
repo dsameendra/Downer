@@ -124,5 +124,13 @@ for i in 0...400 { minPos = min(minPos, hardDown.position(at: Double(i) * 0.005)
 check("spring: a hard flick downward never undershoots", minPos >= 161.9999, "\(minPos)")
 check("spring: a flick that is not too hard keeps its speed", near(CriticallyDampedSpring(from: 0, to: 1000, velocity: 800).velocity(at: 0), 800, 0.5))
 
+// MARK: swipe action layout
+check("layout: resting width fits every button", SwipeActionLayout.restingWidth(count: 2, chip: 72, spacing: 6) == 150)
+check("layout: one button at rest", SwipeActionLayout.widths(count: 1, revealed: 72, chip: 72, spacing: 6) == [72])
+check("layout: two buttons at rest keep their widths", SwipeActionLayout.widths(count: 2, revealed: 150, chip: 72, spacing: 6) == [72, 72])
+check("layout: a long swipe stretches only the last button", SwipeActionLayout.widths(count: 2, revealed: 300, chip: 72, spacing: 6) == [72, 222])
+check("layout: a short pull never shrinks the buttons", SwipeActionLayout.widths(count: 2, revealed: 40, chip: 72, spacing: 6) == [72, 72])
+check("layout: no actions, no widths", SwipeActionLayout.widths(count: 0, revealed: 100, chip: 72, spacing: 6).isEmpty)
+
 print(failures == 0 ? "ALL PASS" : "\(failures) FAILURES")
 exit(failures == 0 ? 0 : 1)

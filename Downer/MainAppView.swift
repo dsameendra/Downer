@@ -36,9 +36,6 @@ struct MainAppView: View {
     @Namespace private var typeNamespace
     @FocusState private var urlFocused: Bool
     @State private var trayExpansion: CGFloat = 0
-    /// Mirrors `dl.needsTray` but changes inside `withAnimation`, so the dock-to-tray swap always animates
-    /// even when it is triggered by a background update.
-    @State private var showsTray = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject private var deps = DependencyManager.shared
     @ObservedObject private var dl = DownloadManager.shared
@@ -118,29 +115,24 @@ struct MainAppView: View {
 
             VStack {
                 Spacer()
-                if showsTray {
-                    QueueTray(
-                        jobs: dl.jobs,
-                        status: dl.status,
-                        onCancelAll: { dl.cancelAll() },
-                        onRemove: { dl.remove($0) },
-                        onRetry: { dl.retry($0) },
-                        onRetryAll: { dl.retryAllFailed() },
-                        onReveal: { dl.revealFiles() },
-                        onDismiss: { withAnimation(Motion.standard(reduce: reduceMotion)) { dl.clearFinished() } },
-                        expansion: $trayExpansion,
-                        startsOpen: DownloadManager.previewTrayOpen
-                    )
-                    .transition(dockSwapTransition)
-                } else {
-                    dock
-                        .transition(dockSwapTransition)
-                }
+                // one panel, one glass shape: it grows from the dock into the tray and back
+                QueueTray(
+                    jobs: dl.jobs,
+                    status: dl.status,
+                    onCancelAll: { dl.cancelAll() },
+                    onRemove: { dl.remove($0) },
+                    onRetry: { dl.retry($0) },
+                    onRetryAll: { dl.retryAllFailed() },
+                    onReveal: { dl.revealFiles() },
+                    onDismiss: { withAnimation(Motion.standard(reduce: reduceMotion)) { dl.clearFinished() } },
+                    expansion: $trayExpansion,
+                    startsOpen: DownloadManager.previewTrayOpen,
+                    isTray: dl.needsTray,
+                    dock: AnyView(dockContent)
+                )
             }
             .padding(14)
-            .onAppear { showsTray = dl.needsTray }
             .onChange(of: dl.needsTray) { _, needs in
-                withAnimation(Motion.standard(reduce: reduceMotion)) { showsTray = needs }
                 if !needs { trayExpansion = 0 }
             }
         }
@@ -409,7 +401,8 @@ struct MainAppView: View {
         }
     }
 
-    private var dock: some View {
+    /// The single-download controls. The panel around them (glass, height) belongs to `QueueTray`.
+    private var dockContent: some View {
         VStack(spacing: 10) {
             Button {
                 withAnimation(Motion.standard(reduce: reduceMotion)) {
@@ -456,7 +449,6 @@ struct MainAppView: View {
         .padding(12)
         .motion(value: dl.isActive)
         .motion(value: dl.lastFiles.isEmpty)
-        .downerDockGlass()
     }
 
     // MARK: Actions

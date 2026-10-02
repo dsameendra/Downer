@@ -267,3 +267,23 @@ struct CriticallyDampedSpring {
         abs(position(at: t) - target) < 0.05 && abs(velocity(at: t)) < 0.5
     }
 }
+
+// MARK: - Swipe action layout
+
+/// How the revealed action buttons share the space a row has been swiped open. Every button keeps its
+/// width; on a long swipe the last one (the one a full swipe commits) stretches to fill what is left.
+enum SwipeActionLayout {
+    static func widths(count: Int, revealed: CGFloat, chip: CGFloat, spacing: CGFloat) -> [CGFloat] {
+        guard count > 0 else { return [] }
+        let others = CGFloat(count - 1)
+        let fixed = others * (chip + spacing)
+        let last = max(chip, revealed - fixed)
+        return Array(repeating: chip, count: count - 1) + [last]
+    }
+
+    /// Width needed to show every button at rest.
+    static func restingWidth(count: Int, chip: CGFloat, spacing: CGFloat) -> CGFloat {
+        guard count > 0 else { return 0 }
+        return CGFloat(count) * chip + CGFloat(count - 1) * spacing
+    }
+}
