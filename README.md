@@ -12,13 +12,18 @@ Built for macOS 26 with Liquid Glass. Works on macOS 14 and later.
 
 </div>
 
+## What's new in 2.0.3
+
+- The panel at the bottom now grows to fit **Show in Finder** after a download, instead of letting it spill out.
+- The resolution, container and quality pickers are back to the original menus.
+
 ## What's new in 2.0.2
 
 - **Made for the trackpad.** Swipe up with two fingers on the download tray to open it, down to tuck it away; it follows your fingers, glides to rest with the speed of your swipe, and hands over to the list when you reach the top.
 - **Swipe a row** sideways with two fingers to remove, cancel, retry or reveal it. A long swipe does the main action.
 - **Drag to reorder.** Press and hold a waiting link, then drag it to change when it downloads.
 - **Drop links in.** Drag a link from your browser onto the window or the menu bar icon.
-- **Glass controls.** The download type is a glass switcher you can swipe; the pickers open as glass lists.
+- **Glass switcher.** The download type is a glass control you can swipe.
 - **Menu bar popover:** swipe up to open the full window, down to dismiss.
 - **Haptics.** Subtle feedback on a trackpad (turn it off in Settings). Reduce Motion is respected everywhere. Every gesture also has a click, keyboard or VoiceOver equivalent.
 

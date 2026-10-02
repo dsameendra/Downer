@@ -73,7 +73,9 @@ struct QueueTray: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .background(
                     GeometryReader { proxy in
-                        Color.clear.preference(key: DockHeightKey.self, value: proxy.size.height)
+                        Color.clear
+                            .onAppear { dockMeasured(proxy.size.height) }
+                            .onChange(of: proxy.size.height) { _, new in dockMeasured(new) }
                     }
                 )
                 .opacity(isTray ? 0 : 1)
@@ -83,10 +85,6 @@ struct QueueTray: View {
         .frame(height: height, alignment: .top)
         .background(TrackpadScrollRegion(handlers: scrollHandlers))
         .downerDockGlass()
-        .onPreferenceChange(DockHeightKey.self) { measured in
-            dockHeight = measured
-            if !isTray, !driver.isRunning { withAnimation(Motion.standard(reduce: reduceMotion)) { height = measured } }
-        }
         .onChange(of: height) { _, _ in
             expansion = min(1, max(0, (height - Self.peek) / (Self.list - Self.peek)))
         }
@@ -107,6 +105,20 @@ struct QueueTray: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Download queue")
+    }
+
+    /// The dock's contents changed size (Show in Finder appeared, the bar went away): the panel follows,
+    /// even if it is still settling from the tray.
+    private func dockMeasured(_ measured: CGFloat) {
+        dockHeight = measured
+        guard !isTray, abs(measured - height) > 0.5 || driver.isRunning else { return }
+        let current = driver.isRunning ? driver.stop() : height
+        height = current
+        if reduceMotion {
+            withAnimation(Motion.reduced) { height = measured }
+        } else {
+            driver.animate(from: current, to: measured, velocity: 0)
+        }
     }
 
     // MARK: Pieces
@@ -893,9 +905,4 @@ private struct MoveActions: ViewModifier {
             content
         }
     }
-}
-
-private struct DockHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat = 130
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
