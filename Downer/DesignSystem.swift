@@ -391,6 +391,23 @@ enum Motion {
     static let reduced = Animation.easeInOut(duration: 0.12)
 
     static func standard(reduce: Bool) -> Animation { reduce ? reduced : standard }
+
+    // MARK: Gesture feel (the one place to tune it)
+
+    /// How far content may be pulled past its end, with resistance.
+    static let rubberRange: CGFloat = 80
+    /// How far a flick coasts: closer to 1 coasts longer. Used to pick where a release lands.
+    static let deceleration: CGFloat = 0.994
+
+    /// The animation after a release. Critically damped, so it settles without bouncing, and it
+    /// starts at the speed the fingers had (`velocity` is a fraction of the distance per second).
+    static func release(velocity: CGFloat = 0, reduce: Bool = false) -> Animation {
+        if reduce { return reduced }
+        let stiffness = 220.0
+        return .interpolatingSpring(
+            mass: 1, stiffness: stiffness, damping: 2 * stiffness.squareRoot(),
+            initialVelocity: Double(min(max(velocity, -20), 20)))
+    }
 }
 
 private struct MotionModifier<V: Equatable>: ViewModifier {
