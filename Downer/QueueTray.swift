@@ -286,8 +286,14 @@ struct QueueTray: View {
                                 onEnd: { endReorder() },
                                 onStep: { step in stepReorder(job.id, by: step) }))
                         .id(job.id.uuidString)
+                        .transition(
+                            reduceMotion ? .opacity
+                                : .asymmetric(
+                                    insertion: .opacity.combined(with: .move(edge: .bottom)),
+                                    removal: .opacity.combined(with: .scale(scale: 0.96, anchor: .leading))))
                     }
                 }
+                .animation(Motion.standard(reduce: reduceMotion), value: jobs.map(\.id))
                 .padding(.top, 6)
                 .background(ScrollProbeView(probe: probe))
             }

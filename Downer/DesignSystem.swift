@@ -334,7 +334,7 @@ struct DownerProgressBar: View {
             .clipShape(Capsule())
         }
         .frame(height: height)
-        .motion(value: value)
+        .motion(Motion.progress, value: value)
         .onAppear {
             guard value == nil, !reduceMotion else { return }
             withAnimation(.easeInOut(duration: 1.3).repeatForever(autoreverses: false)) { phase = 1 }
@@ -389,6 +389,8 @@ enum Motion {
     static let quick = Animation.snappy(duration: 0.2)
     static let enter = Animation.smooth(duration: 0.45)
     static let reduced = Animation.easeInOut(duration: 0.12)
+    /// Progress arrives in steps from yt-dlp; a longer ease makes the bar glide between them.
+    static let progress = Animation.easeOut(duration: 0.7)
 
     static func standard(reduce: Bool) -> Animation { reduce ? reduced : standard }
 
