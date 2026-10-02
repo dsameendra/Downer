@@ -139,6 +139,7 @@ struct MainAppView: View {
         }
         // 460 × 640 below the title bar; the window adds the title bar's own height
         .frame(width: 460, height: 640)
+        .linkDrop { dl.add($0) }
         .tint(Brand.red)
         .onChange(of: downloadType.wrappedValue) { oldType, newType in
             if newType != .audio {

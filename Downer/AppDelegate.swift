@@ -62,6 +62,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPopoverD
             btn.sendAction(on: [.leftMouseUp, .rightMouseUp])
             btn.action = #selector(statusItemClicked(_:))
             btn.target = self
+
+            // links dropped on the icon join the queue
+            let drop = StatusItemDropView(frame: btn.bounds)
+            drop.autoresizingMask = [.width, .height]
+            drop.onDrop = { text in DownloadManager.shared.add(text) }
+            btn.addSubview(drop)
         }
 
         // the icon follows the download: ring while running, check when done, dot when it needs you
