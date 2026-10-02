@@ -29,17 +29,21 @@ struct QueueTray: View {
     private static let full: CGFloat = 604
     private static let detents: [CGFloat] = [peek, list, full]
 
-    @State private var settled: CGFloat = QueueTray.peek
+    /// The tray's height on screen. Driven by the fingers while they are down, and by `driver` after.
+    @State private var height: CGFloat = QueueTray.peek
+    @State private var pan = SnapPan(
+        points: QueueTray.detents, rubberRange: 40, decelerationRate: Motion.deceleration)
+    @State private var panStart: CGFloat = QueueTray.peek
+    @State private var lastTranslation: CGFloat?
+    @State private var driver = SpringDriver()
+    @State private var probe = ScrollProbe()
     @State private var collapsed: Set<UUID> = []
-    @GestureState private var drag: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var summary: QueueSummary { QueueSummary(jobs: jobs) }
     private var active: Bool { summary.isActive }
     private var running: DownloadJob? { jobs.first { $0.state == .running } }
     private var failedJobs: Int { jobs.filter { $0.state == .failed }.count }
-
-    private var height: CGFloat { min(Self.full, max(Self.peek, settled - drag)) }
 
     /// 0…1 between the peeking and list heights; drives the cross-fade of content.
     private var reveal: CGFloat {
@@ -62,12 +66,15 @@ struct QueueTray: View {
         .padding(.horizontal, 16)
         .padding(.bottom, 14)
         .frame(height: height, alignment: .top)
+        .background(TrackpadScrollRegion(handlers: scrollHandlers))
         .downerDockGlass()
         .onChange(of: height) { _, _ in
             expansion = min(1, max(0, (height - Self.peek) / (Self.list - Self.peek)))
         }
-        .animation(Motion.standard(reduce: reduceMotion), value: settled)
-        .onAppear { if startsOpen { settled = Self.list } }
+        .onAppear {
+            driver.onUpdate = { height = $0 }
+            if startsOpen { height = Self.list }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Download queue")
     }
@@ -86,6 +93,8 @@ struct QueueTray: View {
             .accessibilityHint("Drag or activate to show or hide every download")
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { toggle() }
+            .accessibilityAction(named: "Expand download list") { animate(to: Self.list) }
+            .accessibilityAction(named: "Collapse download list") { animate(to: Self.peek) }
     }
 
     private var header: some View {
@@ -192,6 +201,7 @@ struct QueueTray: View {
                     }
                 }
                 .padding(.top, 6)
+                .background(ScrollProbeView(probe: probe))
             }
             .scrollIndicators(.never)
             .defaultScrollAnchor(.top)
@@ -313,20 +323,111 @@ struct QueueTray: View {
     }
 
     // MARK: Interaction
+    private var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
+
+    private var scrollHandlers: TrackpadScrollHandlers {
+        var h = TrackpadScrollHandlers()
+        // a vertical swipe belongs to the tray unless the list underneath should scroll
+        h.decide = { intent in
+            guard intent.axis == .vertical else { return false }
+            debugLog("decide height=\(height) atTop=\(probe.isAtTop) up=\(intent.up) offset=\(probe.debugOffset)")
+            return SheetScrollArbiter.owner(
+                sheetHeight: height, fullHeight: Self.full, listVisible: height > Self.peek + 1,
+                listAtTop: probe.isAtTop, fingerUp: intent.up) == .sheet
+        }
+        h.began = { beginPan(at: now) }
+        h.changed = { _, up, time in movePan(by: up, at: time) }
+        h.ended = { time in endPan(at: time) }
+        // a mouse wheel notch steps one position
+        h.discrete = { _, up in
+            guard abs(up) > 0.01 else { return false }
+            if driver.isRunning { return true }  // swallow notches while it is settling
+            let owner = SheetScrollArbiter.owner(
+                sheetHeight: height, fullHeight: Self.full, listVisible: height > Self.peek + 1,
+                listAtTop: probe.isAtTop, fingerUp: up)
+            guard owner == .sheet else { return false }
+            let next = up > 0 ? Self.detents.first { $0 > height + 1 } : Self.detents.last { $0 < height - 1 }
+            guard let next else { return true }
+            animate(to: next)
+            Haptics.tick()
+            return true
+        }
+        // Esc folds the tray away
+        h.escape = {
+            guard height > Self.peek + 1 else { return false }
+            animate(to: Self.peek)
+            return true
+        }
+        return h
+    }
+
+    /// Mouse and pen dragging on the handle or header, feeding the same model as the trackpad.
     private var dragGesture: some Gesture {
         DragGesture(minimumDistance: 4)
-            .updating($drag) { value, state, _ in state = value.translation.height }
-            .onEnded { value in
-                let predicted = settled - value.predictedEndTranslation.height
-                let target = Self.detents.min { abs($0 - predicted) < abs($1 - predicted) } ?? Self.peek
-                settled = min(Self.full, max(Self.peek, target))
-                expansion = min(1, max(0, (settled - Self.peek) / (Self.list - Self.peek)))
+            .onChanged { value in
+                if lastTranslation == nil {
+                    beginPan(at: now)
+                    lastTranslation = 0
+                }
+                let delta = -(value.translation.height - (lastTranslation ?? 0))
+                lastTranslation = value.translation.height
+                movePan(by: delta, at: now)
+            }
+            .onEnded { _ in
+                lastTranslation = nil
+                endPan(at: now)
             }
     }
 
+    #if DEBUG
+        private func debugLog(_ line: String) {
+            guard ProcessInfo.processInfo.environment["DOWNER_GESTURE_LOG"] != nil else { return }
+            let url = URL(fileURLWithPath: "/tmp/claude-501/downer-gesture.log")
+            let data = (line + "\n").data(using: .utf8)!
+            if let handle = try? FileHandle(forWritingTo: url) { handle.seekToEndOfFile(); handle.write(data); try? handle.close() }
+            else { try? data.write(to: url) }
+        }
+    #else
+        private func debugLog(_ line: String) {}
+    #endif
+
+    private func beginPan(at time: TimeInterval) {
+        let current = driver.isRunning ? driver.stop() : height  // grab it where it is
+        height = current
+        panStart = current
+        pan.begin(at: current, time: time)
+    }
+
+    private func movePan(by delta: CGFloat, at time: TimeInterval) {
+        debugLog("move delta=\(delta) t=\(time) raw→\(pan.raw + delta)")
+        pan.move(by: delta, at: time)
+        height = pan.value  // 1:1 with the fingers, no animation
+    }
+
+    private func endPan(at time: TimeInterval) {
+        let settle = pan.settle(at: time)
+        debugLog("end t=\(time) value=\(pan.value) settle=\(settle)")
+        run(settle)
+        if abs(settle.target - panStart) > 1 { Haptics.tick() }
+    }
+
+    private func run(_ settle: SnapPan.Settle) {
+        if reduceMotion {
+            driver.stop()
+            withAnimation(Motion.reduced) { height = settle.target }
+        } else {
+            driver.animate(from: height, to: settle.target, velocity: settle.velocity)
+        }
+    }
+
+    private func animate(to target: CGFloat) {
+        let current = driver.isRunning ? driver.stop() : height
+        height = current
+        run(SnapPan.Settle(target: target, velocity: 0, normalizedVelocity: 0))
+    }
+
     private func toggle() {
-        settled = settled > Self.peek + 1 ? Self.peek : Self.list
-        expansion = settled > Self.peek + 1 ? 1 : 0
+        animate(to: height > Self.peek + 1 ? Self.peek : Self.list)
     }
 
     private func toggleCollapse(_ id: UUID) {

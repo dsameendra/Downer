@@ -108,6 +108,12 @@ extension View {
     }
 }
 
+/// What happens when the dock and the tray swap: the old one slides down and fades while the new one
+/// rises into place. (A glass morph was tried; a glass container swallows view transitions.)
+var dockSwapTransition: AnyTransition {
+    .move(edge: .bottom).combined(with: .opacity)
+}
+
 /// Groups neighbouring glass so it can blend and morph on macOS 26+.
 struct DownerGlassGroup<Content: View>: View {
     var spacing: CGFloat = 14

@@ -100,5 +100,29 @@ check("reorder: dragging up pushes the row above down", r.shift(for: 2) == 52 &&
 check("reorder: rows outside the movable block never move", r.shift(for: 0) == 0 && r.shift(for: 1) == 0)
 check("reorder: a source outside the movable block is rejected", ReorderModel(rowHeight: 52, count: 6, movable: 2...5, source: 1) == nil)
 
+// MARK: spring
+let sp = CriticallyDampedSpring(from: 100, to: 400, velocity: 600)
+check("spring: starts where it was released", near(sp.position(at: 0), 100))
+check("spring: starts at the release velocity", near(sp.velocity(at: 0), 600, 0.5), "\(sp.velocity(at: 0))")
+check("spring: arrives at the target", near(sp.position(at: 1.5), 400, 0.05), "\(sp.position(at: 1.5))")
+check("spring: settles quickly (under 0.7 s)", sp.isSettled(at: 0.7) || near(sp.position(at: 0.7), 400, 2), "\(sp.position(at: 0.7))")
+let slow = CriticallyDampedSpring(from: 100, to: 400, velocity: 0)
+var monotonic = true; var prev = slow.position(at: 0)
+for i in 1...100 { let x = slow.position(at: Double(i) * 0.01); if x < prev - 0.0001 { monotonic = false }; prev = x }
+check("spring: from rest it never overshoots or bounces", monotonic && prev <= 400.0001)
+let away = CriticallyDampedSpring(from: 100, to: 400, velocity: -500)
+check("spring: a velocity away from the target still arrives", near(away.position(at: 2.0), 400, 0.05))
+check("spring: continuity, position is the integral of velocity", near((sp.position(at: 0.2001) - sp.position(at: 0.2)) / 0.0001, sp.velocity(at: 0.2), 2))
+
+var maxPos: CGFloat = 0
+let hard = CriticallyDampedSpring(from: 452, to: 604, velocity: 6000)
+for i in 0...400 { maxPos = max(maxPos, hard.position(at: Double(i) * 0.005)) }
+check("spring: a hard flick toward the target never overshoots it", maxPos <= 604.0001, "\(maxPos)")
+let hardDown = CriticallyDampedSpring(from: 604, to: 162, velocity: -9000)
+var minPos: CGFloat = 1000
+for i in 0...400 { minPos = min(minPos, hardDown.position(at: Double(i) * 0.005)) }
+check("spring: a hard flick downward never undershoots", minPos >= 161.9999, "\(minPos)")
+check("spring: a flick that is not too hard keeps its speed", near(CriticallyDampedSpring(from: 0, to: 1000, velocity: 800).velocity(at: 0), 800, 0.5))
+
 print(failures == 0 ? "ALL PASS" : "\(failures) FAILURES")
 exit(failures == 0 ? 0 : 1)

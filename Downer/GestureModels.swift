@@ -224,3 +224,46 @@ struct ReorderModel {
         return 0
     }
 }
+
+// MARK: - Spring
+
+/// A critically damped spring (no oscillation) solved exactly, so it can be sampled at any time
+/// and started from any position and velocity. That is what makes a settle interruptible: grab the
+/// content mid-animation and you hold exactly what is on screen.
+struct CriticallyDampedSpring {
+    let origin: CGFloat
+    let target: CGFloat
+    let omega: CGFloat
+    private let a: CGFloat
+    private let b: CGFloat
+
+    /// `velocity` is in points per second. `stiffness` ≈ 220 settles in about 0.3 s.
+    init(from origin: CGFloat, to target: CGFloat, velocity: CGFloat, stiffness: CGFloat = 220) {
+        self.origin = origin
+        self.target = target
+        self.omega = stiffness.squareRoot()
+        // A critically damped spring only overshoots if it starts faster than ω × the distance left.
+        // Cap the launch speed just below that, so even a hard flick settles without a bounce.
+        var v = velocity
+        let distance = target - origin
+        if distance != 0, v * distance > 0 {
+            v = (v > 0 ? 1 : -1) * min(abs(v), omega * abs(distance) * 0.98)
+        }
+        self.a = origin - target
+        self.b = v + omega * (origin - target)
+    }
+
+    func position(at t: TimeInterval) -> CGFloat {
+        let t = CGFloat(t)
+        return target + (a + b * t) * exp(-omega * t)
+    }
+
+    func velocity(at t: TimeInterval) -> CGFloat {
+        let t = CGFloat(t)
+        return (b - omega * (a + b * t)) * exp(-omega * t)
+    }
+
+    func isSettled(at t: TimeInterval) -> Bool {
+        abs(position(at: t) - target) < 0.05 && abs(velocity(at: t)) < 0.5
+    }
+}

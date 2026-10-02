@@ -36,6 +36,9 @@ struct MainAppView: View {
     @Namespace private var typeNamespace
     @FocusState private var urlFocused: Bool
     @State private var trayExpansion: CGFloat = 0
+    /// Mirrors `dl.needsTray` but changes inside `withAnimation`, so the dock-to-tray swap always animates
+    /// even when it is triggered by a background update.
+    @State private var showsTray = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject private var deps = DependencyManager.shared
     @ObservedObject private var dl = DownloadManager.shared
@@ -115,7 +118,7 @@ struct MainAppView: View {
 
             VStack {
                 Spacer()
-                if dl.needsTray {
+                if showsTray {
                     QueueTray(
                         jobs: dl.jobs,
                         status: dl.status,
@@ -128,15 +131,18 @@ struct MainAppView: View {
                         expansion: $trayExpansion,
                         startsOpen: DownloadManager.previewTrayOpen
                     )
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .transition(dockSwapTransition)
                 } else {
                     dock
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .transition(dockSwapTransition)
                 }
             }
             .padding(14)
-            .motion(value: dl.needsTray)
-            .onChange(of: dl.needsTray) { _, needs in if !needs { trayExpansion = 0 } }
+            .onAppear { showsTray = dl.needsTray }
+            .onChange(of: dl.needsTray) { _, needs in
+                withAnimation(Motion.standard(reduce: reduceMotion)) { showsTray = needs }
+                if !needs { trayExpansion = 0 }
+            }
         }
         // 460 × 640 below the title bar; the window adds the title bar's own height
         .frame(width: 460, height: 640)

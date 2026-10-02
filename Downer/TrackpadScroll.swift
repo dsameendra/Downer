@@ -30,6 +30,8 @@ struct TrackpadScrollHandlers {
     var ended: (_ time: TimeInterval) -> Void = { _ in }
     /// A mouse wheel notch (no fingers on a trackpad). Return true to take it.
     var discrete: (_ right: CGFloat, _ up: CGFloat) -> Bool = { _, _ in false }
+    /// The Esc key. Return true if it was used.
+    var escape: () -> Bool = { false }
 }
 
 /// Place as a `.background` of the area that should react. It never takes clicks.
@@ -51,6 +53,7 @@ final class ScrollRegionView: NSView {
     var handlers = TrackpadScrollHandlers()
 
     private var monitor: Any?
+    private var keyMonitor: Any?
     private var owned = false
     private var swallowMomentum = false
     private var pending = false
@@ -66,13 +69,21 @@ final class ScrollRegionView: NSView {
         monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
             self?.handle(event) ?? event
         }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, event.window === self.window, event.keyCode == 53,
+                event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty
+            else { return event }
+            return self.handlers.escape() ? nil : event
+        }
     }
 
     deinit { removeMonitor() }
 
     private func removeMonitor() {
         if let monitor { NSEvent.removeMonitor(monitor) }
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         monitor = nil
+        keyMonitor = nil
     }
 
     private func inside(_ event: NSEvent) -> Bool {
@@ -162,6 +173,11 @@ final class ScrollRegionView: NSView {
 /// list is scrolled to its top (so a pull-down can hand over to the sheet).
 final class ScrollProbe {
     fileprivate weak var view: NSView?
+
+    var debugOffset: String {
+        guard let sv = view?.enclosingScrollView, let doc = sv.documentView else { return "no scroll view" }
+        return "clip=\(sv.contentView.bounds) doc=\(doc.bounds) flipped=\(doc.isFlipped)"
+    }
 
     var isAtTop: Bool {
         guard let scrollView = view?.enclosingScrollView, let document = scrollView.documentView else { return true }
