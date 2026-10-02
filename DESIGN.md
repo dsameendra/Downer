@@ -31,3 +31,5 @@ Progress percentages (the app does not parse them), gradient text, extra glass o
 - Motion: one language in `Motion` (smooth 0.3 s, quick 0.2 s, never bouncy). Every animation has a Reduce Motion path that keeps a brief fade.
 - The progress bar is custom (`DownerProgressBar`) because the system linear style ignores the brand tint in dark mode.
 - Tinted Liquid Glass renders grey inside an `NSPopover`, so the popover's Download button is solid red (`flat`).
+- Gestures: a two-finger swipe is a scroll event, so `TrackpadScroll.swift` reads it directly. Content follows the fingers 1:1 with no animation, then `SpringDriver` settles it with the swipe's velocity (critically damped, no bounce, interruptible). The maths lives in `GestureModels.swift` and is tested by `scripts/test-gestures.sh`. Tune feel in `Motion`.
+- The dock and the tray are one glass panel whose height changes; their contents cross-fade.
