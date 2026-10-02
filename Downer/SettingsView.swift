@@ -11,6 +11,7 @@ import SwiftUI
 struct SettingsView: View {
     // persisted tool paths
     @AppStorage("backgroundGlow") private var backgroundGlow = true
+    @AppStorage(Haptics.storageKey) private var hapticsOn = true
     @AppStorage(AppearanceMode.storageKey) private var appearanceRaw = AppearanceMode.system.rawValue
     @ObservedObject private var deps = DependencyManager.shared
 
@@ -50,11 +51,12 @@ struct SettingsView: View {
                 Text("Theme")
                     .font(.system(size: 14))
                 Spacer(minLength: 0)
-                Picker("Theme", selection: $appearanceRaw) {
-                    ForEach(AppearanceMode.allCases) { Text($0.title).tag($0.rawValue) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
+                GlassSegmentedControl(
+                    options: AppearanceMode.allCases.map { .init(value: $0, title: $0.title) },
+                    selection: Binding(
+                        get: { AppearanceMode(rawValue: appearanceRaw) ?? .system },
+                        set: { appearanceRaw = $0.rawValue }),
+                    height: 32, fontSize: 12, label: "Theme")
                 .frame(width: 210)
             }
             .padding(.leading, 14)
@@ -81,6 +83,26 @@ struct SettingsView: View {
             .padding(.leading, 14)
             .padding(.trailing, 12)
             .frame(minHeight: 58)
+
+            HStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Haptic feedback")
+                        .font(.system(size: 14))
+                    Text("A soft tick on a trackpad when a gesture snaps or completes.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                Toggle("Haptic feedback", isOn: $hapticsOn)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+            }
+            .padding(.vertical, 8)
+            .padding(.leading, 14)
+            .padding(.trailing, 12)
+            .frame(minHeight: 58)
+            .overlay(alignment: .top) { Divider().opacity(0.6).padding(.horizontal, 14) }
         }
     }
 

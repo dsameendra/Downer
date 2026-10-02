@@ -12,6 +12,7 @@ struct PopOverView: View {
     @ObservedObject private var dl = DownloadManager.shared
     @State private var videoURL = ""
     @FocusState private var urlFocused: Bool
+    @State private var pull: CGFloat = 0  // finger travel, up is positive
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var addsToQueue: Bool { !videoURL.isEmpty && dl.isActive }
@@ -90,8 +91,26 @@ struct PopOverView: View {
             urlFocused = true
         }
         .padding(16)
+        .offset(y: -RubberBand.resist(abs(pull), range: 18) * (pull >= 0 ? 1 : -1))
         .frame(width: 360, height: 180)
+        .background(TrackpadScrollRegion(handlers: swipeHandlers))
         .tint(Brand.red)
+    }
+
+    /// Swipe up with two fingers to open the full window; swipe down to put the popover away.
+    private var swipeHandlers: TrackpadScrollHandlers {
+        var h = TrackpadScrollHandlers()
+        h.decide = { $0.axis == .vertical }
+        h.changed = { _, up, _ in pull += up }
+        h.ended = { _ in
+            let travel = pull
+            withAnimation(Motion.standard(reduce: reduceMotion)) { pull = 0 }
+            guard abs(travel) > 50 else { return }
+            Haptics.notch()
+            if travel > 0 { AppDelegate.shared.openFullApp() }
+            AppDelegate.shared.popover.performClose(nil)
+        }
+        return h
     }
 
     private static func copiedLink() -> String? {

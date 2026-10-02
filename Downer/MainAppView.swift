@@ -33,7 +33,6 @@ struct MainAppView: View {
 
     @State private var videoURL = ""
     @State private var infoExpanded = false
-    @Namespace private var typeNamespace
     @FocusState private var urlFocused: Bool
     @State private var trayExpansion: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -115,31 +114,32 @@ struct MainAppView: View {
 
             VStack {
                 Spacer()
-                if dl.needsTray {
-                    QueueTray(
-                        jobs: dl.jobs,
-                        status: dl.status,
-                        onCancelAll: { dl.cancelAll() },
-                        onRemove: { dl.remove($0) },
-                        onRetry: { dl.retry($0) },
-                        onRetryAll: { dl.retryAllFailed() },
-                        onReveal: { dl.revealFiles() },
-                        onDismiss: { withAnimation(Motion.standard(reduce: reduceMotion)) { dl.clearFinished() } },
-                        expansion: $trayExpansion,
-                        startsOpen: DownloadManager.previewTrayOpen
-                    )
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                } else {
-                    dock
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
+                // one panel, one glass shape: it grows from the dock into the tray and back
+                QueueTray(
+                    jobs: dl.jobs,
+                    status: dl.status,
+                    onCancelAll: { dl.cancelAll() },
+                    onRemove: { dl.remove($0) },
+                    onRetry: { dl.retry($0) },
+                    onRetryAll: { dl.retryAllFailed() },
+                    onReveal: { dl.revealFiles() },
+                    onRevealJob: { dl.reveal(job: $0) },
+                    onMove: { dl.move($0, toIndex: $1) },
+                    onDismiss: { withAnimation(Motion.standard(reduce: reduceMotion)) { dl.clearFinished() } },
+                    expansion: $trayExpansion,
+                    startsOpen: DownloadManager.previewTrayOpen,
+                    isTray: dl.needsTray,
+                    dock: AnyView(dockContent)
+                )
             }
             .padding(14)
-            .motion(value: dl.needsTray)
-            .onChange(of: dl.needsTray) { _, needs in if !needs { trayExpansion = 0 } }
+            .onChange(of: dl.needsTray) { _, needs in
+                if !needs { trayExpansion = 0 }
+            }
         }
         // 460 × 640 below the title bar; the window adds the title bar's own height
         .frame(width: 460, height: 640)
+        .linkDrop { dl.add($0) }
         .tint(Brand.red)
         .onChange(of: downloadType.wrappedValue) { oldType, newType in
             if newType != .audio {
@@ -211,35 +211,10 @@ struct MainAppView: View {
     }
 
     private var typeSelector: some View {
-        HStack(spacing: 0) {
-            ForEach(DownloadType.allCases) { type in
-                let selected = downloadType.wrappedValue == type
-                Button {
-                    withAnimation(Motion.standard(reduce: reduceMotion)) {
-                        downloadType.wrappedValue = type
-                    }
-                } label: {
-                    Text(type.rawValue)
-                        .font(.system(size: 13, weight: selected ? .semibold : .medium))
-                        .foregroundStyle(selected ? Color.primary : Color.primary.opacity(0.72))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 36)
-                        .background {
-                            if selected {
-                                Capsule()
-                                    .fill(colorScheme == .dark ? Color.white.opacity(0.20) : Color.white)
-                                    .shadow(color: .black.opacity(0.12), radius: 4, x: 0, y: 2)
-                                    .matchedGeometryEffect(id: "typeThumb", in: typeNamespace)
-                            }
-                        }
-                        .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(3)
-        .frame(height: 42)
-        .downerGlass(in: Capsule())
+        GlassSegmentedControl(
+            options: DownloadType.allCases.map { .init(value: $0, title: $0.rawValue) },
+            selection: downloadType,
+            label: "Download type")
     }
 
     @ViewBuilder
@@ -403,7 +378,8 @@ struct MainAppView: View {
         }
     }
 
-    private var dock: some View {
+    /// The single-download controls. The panel around them (glass, height) belongs to `QueueTray`.
+    private var dockContent: some View {
         VStack(spacing: 10) {
             Button {
                 withAnimation(Motion.standard(reduce: reduceMotion)) {
@@ -450,7 +426,6 @@ struct MainAppView: View {
         .padding(12)
         .motion(value: dl.isActive)
         .motion(value: dl.lastFiles.isEmpty)
-        .downerDockGlass()
     }
 
     // MARK: Actions
@@ -489,19 +464,14 @@ struct OptionRow: View {
     let options: [String]
     @Binding var selection: String
     var showsDivider = true
+    @State private var open = false
 
     var body: some View {
         HStack {
             Text(title)
                 .font(.system(size: 14))
             Spacer()
-            Menu {
-                Picker(title, selection: $selection) {
-                    ForEach(options, id: \.self) { Text($0).tag($0) }
-                }
-                .pickerStyle(.inline)
-                .labelsHidden()
-            } label: {
+            Button { open.toggle() } label: {
                 HStack(spacing: 6) {
                     Text(selection)
                         .font(.system(size: 13, weight: .medium))
@@ -514,12 +484,16 @@ struct OptionRow: View {
                 .padding(.leading, 12)
                 .padding(.trailing, 9)
                 .frame(height: 28)
-                .background(Color.primary.opacity(0.10), in: Capsule())
+                .contentShape(Capsule())
+                .downerGlass(in: Capsule(), interactive: true)
             }
-            .menuStyle(.button)
             .buttonStyle(.plain)
-            .menuIndicator(.hidden)
             .fixedSize()
+            .popover(isPresented: $open, arrowEdge: .bottom) {
+                OptionList(options: options, selection: $selection) { open = false }
+            }
+            .accessibilityLabel(title)
+            .accessibilityValue(selection)
         }
         .padding(.leading, 14)
         .padding(.trailing, 9)
@@ -529,6 +503,50 @@ struct OptionRow: View {
                 Divider().opacity(0.6).padding(.horizontal, 14)
             }
         }
+    }
+}
+
+/// The choices, as a short glass list. The one in use is marked; a tap picks and closes.
+private struct OptionList: View {
+    let options: [String]
+    @Binding var selection: String
+    let dismiss: () -> Void
+    @State private var hovered: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        VStack(spacing: 2) {
+            ForEach(options, id: \.self) { option in
+                let chosen = option == selection
+                Button {
+                    selection = option
+                    Haptics.tick()
+                    dismiss()
+                } label: {
+                    HStack(spacing: 8) {
+                        Text(option)
+                            .font(.system(size: 13, weight: chosen ? .semibold : .medium))
+                        Spacer(minLength: 16)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Brand.red)
+                            .opacity(chosen ? 1 : 0)
+                    }
+                    .padding(.horizontal, 12)
+                    .frame(height: 30)
+                    .frame(minWidth: 130)
+                    .background(
+                        Capsule().fill(Color.primary.opacity(chosen ? 0.14 : (hovered == option ? 0.08 : 0)))
+                    )
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .onHover { inside in hovered = inside ? option : (hovered == option ? nil : hovered) }
+                .accessibilityAddTraits(chosen ? .isSelected : [])
+            }
+        }
+        .padding(6)
+        .motion(Motion.quick, value: hovered)
     }
 }
 

@@ -18,20 +18,39 @@ struct QueueTray: View {
     let onRetry: (UUID) -> Void
     let onRetryAll: () -> Void
     let onReveal: () -> Void
+    let onRevealJob: (UUID) -> Void
+    let onMove: (UUID, Int) -> Void
     let onDismiss: () -> Void
     /// 0 when peeking … 1 when fully open. The window behind dims with it.
     @Binding var expansion: CGFloat
     /// Opens the tray at launch; used for previews and tests.
     var startsOpen = false
+    /// True when the panel shows the queue; false when it shows the single-download dock. Same glass
+    /// either way: switching animates its height and cross-fades the contents, so it truly morphs.
+    var isTray = true
+    /// The dock's contents (its own padding included), shown while `isTray` is false.
+    var dock: AnyView = AnyView(EmptyView())
 
     private static let peek: CGFloat = 162
     private static let list: CGFloat = 452
     private static let full: CGFloat = 604
     private static let detents: [CGFloat] = [peek, list, full]
 
-    @State private var settled: CGFloat = QueueTray.peek
+    /// The panel's height on screen. Driven by the fingers while they are down, and by `driver` after.
+    @State private var height: CGFloat = QueueTray.peek
+    /// How tall the dock's contents want to be.
+    @State private var dockHeight: CGFloat = 130
+    @State private var pan = SnapPan(
+        points: QueueTray.detents, rubberRange: 40, decelerationRate: Motion.deceleration)
+    @State private var panStart: CGFloat = QueueTray.peek
+    @State private var lastTranslation: CGFloat?
+    @State private var driver = SpringDriver()
+    @State private var probe = ScrollProbe()
+    @State private var openRow: UUID?
+    @State private var reorder: RowReorder?
+    @State private var lifted: UUID?
+    @State private var rowHeights: [UUID: CGFloat] = [:]
     @State private var collapsed: Set<UUID> = []
-    @GestureState private var drag: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var summary: QueueSummary { QueueSummary(jobs: jobs) }
@@ -39,14 +58,59 @@ struct QueueTray: View {
     private var running: DownloadJob? { jobs.first { $0.state == .running } }
     private var failedJobs: Int { jobs.filter { $0.state == .failed }.count }
 
-    private var height: CGFloat { min(Self.full, max(Self.peek, settled - drag)) }
-
     /// 0…1 between the peeking and list heights; drives the cross-fade of content.
     private var reveal: CGFloat {
         min(1, max(0, (height - Self.peek) / (Self.list - Self.peek)))
     }
 
     var body: some View {
+        ZStack(alignment: .top) {
+            trayLayout
+                .opacity(isTray ? 1 : 0)
+                .animation(reduceMotion ? Motion.reduced : .easeIn(duration: 0.18).delay(0.07), value: isTray)
+                .allowsHitTesting(isTray)
+            dock
+                .fixedSize(horizontal: false, vertical: true)
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(key: DockHeightKey.self, value: proxy.size.height)
+                    }
+                )
+                .opacity(isTray ? 0 : 1)
+                .animation(reduceMotion ? Motion.reduced : .easeOut(duration: 0.1), value: isTray)
+                .allowsHitTesting(!isTray)
+        }
+        .frame(height: height, alignment: .top)
+        .background(TrackpadScrollRegion(handlers: scrollHandlers))
+        .downerDockGlass()
+        .onPreferenceChange(DockHeightKey.self) { measured in
+            dockHeight = measured
+            if !isTray, !driver.isRunning { withAnimation(Motion.standard(reduce: reduceMotion)) { height = measured } }
+        }
+        .onChange(of: height) { _, _ in
+            expansion = min(1, max(0, (height - Self.peek) / (Self.list - Self.peek)))
+        }
+        .onChange(of: isTray) { _, tray in
+            // the same glass grows into the tray, or shrinks back into the dock
+            let current = driver.isRunning ? driver.stop() : height
+            height = current
+            let target = tray ? Self.peek : dockHeight
+            if reduceMotion {
+                withAnimation(Motion.reduced) { height = target }
+            } else {
+                driver.animate(from: current, to: target, velocity: 0)
+            }
+        }
+        .onAppear {
+            driver.onUpdate = { height = $0 }
+            height = isTray ? (startsOpen ? Self.list : Self.peek) : dockHeight
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Download queue")
+    }
+
+    // MARK: Pieces
+    private var trayLayout: some View {
         VStack(spacing: 0) {
             handle
             header
@@ -61,18 +125,8 @@ struct QueueTray: View {
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 14)
-        .frame(height: height, alignment: .top)
-        .downerDockGlass()
-        .onChange(of: height) { _, _ in
-            expansion = min(1, max(0, (height - Self.peek) / (Self.list - Self.peek)))
-        }
-        .animation(Motion.standard(reduce: reduceMotion), value: settled)
-        .onAppear { if startsOpen { settled = Self.list } }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Download queue")
     }
 
-    // MARK: Pieces
     private var handle: some View {
         Capsule()
             .fill(Color.primary.opacity(0.3))
@@ -86,6 +140,8 @@ struct QueueTray: View {
             .accessibilityHint("Drag or activate to show or hide every download")
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { toggle() }
+            .accessibilityAction(named: "Expand download list") { animate(to: Self.list) }
+            .accessibilityAction(named: "Collapse download list") { animate(to: Self.peek) }
     }
 
     private var header: some View {
@@ -173,26 +229,75 @@ struct QueueTray: View {
         .motion(Motion.quick, value: currentTitle)
     }
 
+    /// What a swipe on this row offers. The last action is what a full swipe does.
+    private func swipeActions(for job: DownloadJob) -> [SwipeAction] {
+        let remove = SwipeAction(
+            id: "remove", title: job.state == .running ? "Cancel" : (job.isFinished ? "Clear" : "Remove"),
+            systemImage: job.state == .running ? "xmark" : "trash", tint: .red,
+            handler: { onRemove(job.id) })
+        switch job.state {
+        case .queued, .running:
+            return [remove]
+        case .failed, .cancelled:
+            return [SwipeAction(id: "retry", title: "Retry", systemImage: "arrow.clockwise", tint: .orange,
+                                handler: { onRetry(job.id) }), remove]
+        case .done:
+            return [SwipeAction(id: "reveal", title: "Show", systemImage: "folder", tint: .blue,
+                                handler: { onRevealJob(job.id) }), remove]
+        }
+    }
+
     private var itemList: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(jobs) { job in
-                        if job.isPlaylist {
-                            PlaylistSection(
-                                job: job,
-                                isCollapsed: collapsed.contains(job.id),
-                                onToggle: { toggleCollapse(job.id) },
-                                onRemove: { onRemove(job.id) },
-                                onRetry: { onRetry(job.id) })
-                        } else {
-                            JobRow(job: job, onRemove: { onRemove(job.id) }, onRetry: { onRetry(job.id) })
-                                .id(job.id.uuidString)
+                    ForEach(Array(jobs.enumerated()), id: \.element.id) { index, job in
+                        let open = openRow == job.id
+                        let setOpen: (Bool) -> Void = { isOpen in
+                            if isOpen { openRow = job.id } else if openRow == job.id { openRow = nil }
                         }
+                        Group {
+                            if job.isPlaylist {
+                                PlaylistSection(
+                                    job: job,
+                                    isCollapsed: collapsed.contains(job.id),
+                                    actions: swipeActions(for: job),
+                                    isOpen: open,
+                                    onOpenChange: setOpen,
+                                    onToggle: { toggleCollapse(job.id) },
+                                    onRemove: { onRemove(job.id) },
+                                    onRetry: { onRetry(job.id) })
+                            } else {
+                                SwipeActionsRow(actions: swipeActions(for: job), isOpen: open, onOpenChange: setOpen) {
+                                    JobRow(job: job, onRemove: { onRemove(job.id) }, onRetry: { onRetry(job.id) })
+                                }
+                            }
+                        }
+                        .modifier(
+                            ReorderableRow(
+                                id: job.id,
+                                shift: reorder?.shift(for: index) ?? 0,
+                                isLifted: lifted == job.id,
+                                isActive: reorder != nil,
+                                isMovable: job.state == .queued && !job.isResolving,
+                                position: reorderPosition(of: index),
+                                onBegin: { beginReorder(job.id) },
+                                onDrag: { moveReorder($0) },
+                                onEnd: { endReorder() },
+                                onStep: { step in stepReorder(job.id, by: step) }))
+                        .id(job.id.uuidString)
+                        .transition(
+                            reduceMotion ? .opacity
+                                : .asymmetric(
+                                    insertion: .opacity.combined(with: .move(edge: .bottom)),
+                                    removal: .opacity.combined(with: .scale(scale: 0.96, anchor: .leading))))
                     }
                 }
+                .animation(Motion.standard(reduce: reduceMotion), value: jobs.map(\.id))
                 .padding(.top, 6)
+                .background(ScrollProbeView(probe: probe))
             }
+            .onPreferenceChange(RowHeightKey.self) { rowHeights = $0 }
             .scrollIndicators(.never)
             .defaultScrollAnchor(.top)
             .mask(
@@ -313,20 +418,155 @@ struct QueueTray: View {
     }
 
     // MARK: Interaction
+    private var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
+
+    private var scrollHandlers: TrackpadScrollHandlers {
+        var h = TrackpadScrollHandlers()
+        // a vertical swipe belongs to the tray unless the list underneath should scroll
+        h.decide = { intent in
+            guard isTray, intent.axis == .vertical else { return false }
+            debugLog("decide height=\(height) atTop=\(probe.isAtTop) up=\(intent.up) offset=\(probe.debugOffset)")
+            return SheetScrollArbiter.owner(
+                sheetHeight: height, fullHeight: Self.full, listVisible: height > Self.peek + 1,
+                listAtTop: probe.isAtTop, fingerUp: intent.up) == .sheet
+        }
+        h.began = { beginPan(at: now) }
+        h.changed = { _, up, time in movePan(by: up, at: time) }
+        h.ended = { time in endPan(at: time) }
+        // a mouse wheel notch steps one position
+        h.discrete = { _, up in
+            guard isTray, abs(up) > 0.01 else { return false }
+            if driver.isRunning { return true }  // swallow notches while it is settling
+            let owner = SheetScrollArbiter.owner(
+                sheetHeight: height, fullHeight: Self.full, listVisible: height > Self.peek + 1,
+                listAtTop: probe.isAtTop, fingerUp: up)
+            guard owner == .sheet else { return false }
+            let next = up > 0 ? Self.detents.first { $0 > height + 1 } : Self.detents.last { $0 < height - 1 }
+            guard let next else { return true }
+            animate(to: next)
+            Haptics.tick()
+            return true
+        }
+        // Esc folds the tray away
+        h.escape = {
+            guard isTray, height > Self.peek + 1 else { return false }
+            animate(to: Self.peek)
+            return true
+        }
+        return h
+    }
+
+    /// Mouse and pen dragging on the handle or header, feeding the same model as the trackpad.
     private var dragGesture: some Gesture {
         DragGesture(minimumDistance: 4)
-            .updating($drag) { value, state, _ in state = value.translation.height }
-            .onEnded { value in
-                let predicted = settled - value.predictedEndTranslation.height
-                let target = Self.detents.min { abs($0 - predicted) < abs($1 - predicted) } ?? Self.peek
-                settled = min(Self.full, max(Self.peek, target))
-                expansion = min(1, max(0, (settled - Self.peek) / (Self.list - Self.peek)))
+            .onChanged { value in
+                if lastTranslation == nil {
+                    beginPan(at: now)
+                    lastTranslation = 0
+                }
+                let delta = -(value.translation.height - (lastTranslation ?? 0))
+                lastTranslation = value.translation.height
+                movePan(by: delta, at: now)
+            }
+            .onEnded { _ in
+                lastTranslation = nil
+                endPan(at: now)
             }
     }
 
+    #if DEBUG
+        private func debugLog(_ line: String) {
+            guard ProcessInfo.processInfo.environment["DOWNER_GESTURE_LOG"] != nil else { return }
+            let url = URL(fileURLWithPath: "/tmp/claude-501/downer-gesture.log")
+            let data = (line + "\n").data(using: .utf8)!
+            if let handle = try? FileHandle(forWritingTo: url) { handle.seekToEndOfFile(); handle.write(data); try? handle.close() }
+            else { try? data.write(to: url) }
+        }
+    #else
+        private func debugLog(_ line: String) {}
+    #endif
+
+    private func beginPan(at time: TimeInterval) {
+        let current = driver.isRunning ? driver.stop() : height  // grab it where it is
+        height = current
+        panStart = current
+        pan.begin(at: current, time: time)
+    }
+
+    private func movePan(by delta: CGFloat, at time: TimeInterval) {
+        debugLog("move delta=\(delta) t=\(time) raw→\(pan.raw + delta)")
+        pan.move(by: delta, at: time)
+        height = pan.value  // 1:1 with the fingers, no animation
+    }
+
+    private func endPan(at time: TimeInterval) {
+        let settle = pan.settle(at: time)
+        debugLog("end t=\(time) value=\(pan.value) settle=\(settle)")
+        run(settle)
+        if abs(settle.target - panStart) > 1 { Haptics.tick() }
+    }
+
+    private func run(_ settle: SnapPan.Settle) {
+        if reduceMotion {
+            driver.stop()
+            withAnimation(Motion.reduced) { height = settle.target }
+        } else {
+            driver.animate(from: height, to: settle.target, velocity: settle.velocity)
+        }
+    }
+
+    private func animate(to target: CGFloat) {
+        let current = driver.isRunning ? driver.stop() : height
+        height = current
+        run(SnapPan.Settle(target: target, velocity: 0, normalizedVelocity: 0))
+    }
+
     private func toggle() {
-        settled = settled > Self.peek + 1 ? Self.peek : Self.list
-        expansion = settled > Self.peek + 1 ? 1 : 0
+        animate(to: height > Self.peek + 1 ? Self.peek : Self.list)
+    }
+
+    // MARK: Reordering
+    /// "2 of 4" among the waiting links, for VoiceOver.
+    private func reorderPosition(of index: Int) -> (index: Int, count: Int)? {
+        let waiting = jobs.indices.filter { jobs[$0].state == .queued && !jobs[$0].isResolving }
+        guard let place = waiting.firstIndex(of: index) else { return nil }
+        return (place, waiting.count)
+    }
+
+    private func beginReorder(_ id: UUID) {
+        guard reorder == nil, let source = jobs.firstIndex(where: { $0.id == id }),
+            let bounds = QueueOrder.movableBlock(waiting: jobs.map { $0.state == .queued && !$0.isResolving }),
+            bounds.contains(source)
+        else { return }
+        let heights = jobs.map { rowHeights[$0.id] ?? 52 }
+        reorder = RowReorder(heights: heights, source: source, bounds: bounds)
+        lifted = id
+        openRow = nil
+        Haptics.tick()
+    }
+
+    private func moveReorder(_ translation: CGFloat) {
+        guard var model = reorder else { return }
+        let before = model.target
+        model.drag(to: translation)
+        reorder = model
+        if model.target != before { Haptics.tick() }
+    }
+
+    private func endReorder() {
+        guard let model = reorder, let id = lifted else { return }
+        withAnimation(Motion.standard(reduce: reduceMotion)) {
+            reorder = nil
+            lifted = nil
+            if model.target != model.source { onMove(id, model.target) }
+        }
+    }
+
+    /// Move up or down one place without dragging (VoiceOver and keyboard).
+    private func stepReorder(_ id: UUID, by step: Int) {
+        guard let index = jobs.firstIndex(where: { $0.id == id }) else { return }
+        withAnimation(Motion.standard(reduce: reduceMotion)) { onMove(id, index + step) }
+        Haptics.tick()
     }
 
     private func toggleCollapse(_ id: UUID) {
@@ -403,12 +643,16 @@ private struct JobRow: View {
 private struct PlaylistSection: View {
     let job: DownloadJob
     let isCollapsed: Bool
+    let actions: [SwipeAction]
+    let isOpen: Bool
+    let onOpenChange: (Bool) -> Void
     let onToggle: () -> Void
     let onRemove: () -> Void
     let onRetry: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
+            SwipeActionsRow(actions: actions, isOpen: isOpen, onOpenChange: onOpenChange) {
             Button(action: onToggle) {
                 HStack(spacing: 12) {
                     Image(systemName: "music.note.list")
@@ -443,6 +687,7 @@ private struct PlaylistSection: View {
             .overlay(alignment: .bottom) { Divider().opacity(0.5) }
             .accessibilityLabel("\(job.displayTitle), playlist")
             .accessibilityHint(isCollapsed ? "Show videos" : "Hide videos")
+            }
 
             if !isCollapsed, let playlist = job.playlist {
                 ForEach(playlist.items) { item in
@@ -581,4 +826,76 @@ private struct RemoveButton: View {
         .accessibilityLabel(label)
         .motion(Motion.quick, value: hovering)
     }
+}
+
+private struct RowHeightKey: PreferenceKey {
+    static var defaultValue: [UUID: CGFloat] = [:]
+    static func reduce(value: inout [UUID: CGFloat], nextValue: () -> [UUID: CGFloat]) {
+        value.merge(nextValue()) { $1 }
+    }
+}
+
+/// Press and hold a waiting link, then drag it to change when it will download. The lifted row
+/// follows the pointer; the others slide aside to make room.
+private struct ReorderableRow: ViewModifier {
+    let id: UUID
+    let shift: CGFloat
+    let isLifted: Bool
+    let isActive: Bool
+    let isMovable: Bool
+    let position: (index: Int, count: Int)?
+    let onBegin: () -> Void
+    let onDrag: (CGFloat) -> Void
+    let onEnd: () -> Void
+    let onStep: (Int) -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(key: RowHeightKey.self, value: [id: proxy.size.height])
+                }
+            )
+            .scaleEffect(isLifted && !reduceMotion ? 1.025 : 1)
+            .shadow(color: .black.opacity(isLifted ? 0.28 : 0), radius: isLifted ? 14 : 0, y: isLifted ? 6 : 0)
+            .offset(y: shift)
+            .zIndex(isLifted ? 1 : 0)
+            // the lifted row follows the pointer exactly; the rest glide aside
+            .animation(isLifted ? nil : Motion.standard(reduce: reduceMotion), value: shift)
+            .animation(Motion.quick, value: isLifted)
+            .simultaneousGesture(isMovable ? hold : nil)
+            .modifier(MoveActions(position: isMovable ? position : nil, onStep: onStep))
+    }
+
+    private var hold: some Gesture {
+        LongPressGesture(minimumDuration: 0.28)
+            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .global))
+            .onChanged { value in
+                guard case .second(true, let drag) = value else { return }
+                if !isActive { onBegin() }
+                if let drag { onDrag(drag.translation.height) }
+            }
+            .onEnded { _ in onEnd() }
+    }
+}
+
+private struct MoveActions: ViewModifier {
+    let position: (index: Int, count: Int)?
+    let onStep: (Int) -> Void
+
+    func body(content: Content) -> some View {
+        if let position {
+            content
+                .accessibilityAction(named: Text("Move up")) { if position.index > 0 { onStep(-1) } }
+                .accessibilityAction(named: Text("Move down")) { if position.index < position.count - 1 { onStep(1) } }
+        } else {
+            content
+        }
+    }
+}
+
+private struct DockHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 130
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
