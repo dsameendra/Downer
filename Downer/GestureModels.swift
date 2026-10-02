@@ -230,6 +230,77 @@ struct ReorderModel {
     }
 }
 
+/// The same idea for rows of different heights (a playlist is taller than a single link).
+/// `bounds` is the block of rows that may trade places; every other row stays where it is.
+struct RowReorder {
+    let heights: [CGFloat]
+    let source: Int
+    let bounds: ClosedRange<Int>
+    private(set) var offset: CGFloat = 0
+
+    init?(heights: [CGFloat], source: Int, bounds: ClosedRange<Int>) {
+        guard bounds.contains(source), bounds.lowerBound >= 0, bounds.upperBound < heights.count else { return nil }
+        self.heights = heights
+        self.source = source
+        self.bounds = bounds
+    }
+
+    private func height(_ range: ClosedRange<Int>) -> CGFloat {
+        range.reduce(0) { $0 + heights[$1] }
+    }
+
+    /// The dragged row stays inside the block.
+    mutating func drag(to translation: CGFloat) {
+        let up = source > bounds.lowerBound ? height(bounds.lowerBound...(source - 1)) : 0
+        let down = source < bounds.upperBound ? height((source + 1)...bounds.upperBound) : 0
+        offset = min(max(translation, -up), down)
+    }
+
+    /// The slot the row would drop into: moving down, once its bottom edge passes the next row's
+    /// middle; moving up, once its top edge passes the previous row's middle.
+    var target: Int {
+        let top = (source > 0 ? height(0...(source - 1)) : 0) + offset
+        let bottom = top + heights[source]
+        var slot = source
+        while slot < bounds.upperBound {
+            let next = slot + 1
+            let mid = height(0...slot) + heights[next] / 2
+            if bottom > mid { slot = next } else { break }
+        }
+        while slot > bounds.lowerBound {
+            let previous = slot - 1
+            let mid = (previous > 0 ? height(0...(previous - 1)) : 0) + heights[previous] / 2
+            if top < mid { slot = previous } else { break }
+        }
+        return slot
+    }
+
+    /// How far row `index` is moved while the source is dragged.
+    func shift(for index: Int) -> CGFloat {
+        if index == source { return offset }
+        let to = target
+        if source < to, index > source, index <= to { return -heights[source] }
+        if source > to, index < source, index >= to { return heights[source] }
+        return 0
+    }
+}
+
+/// Which waiting links can trade places in the queue. A link that is running or finished stays put.
+enum QueueOrder {
+    /// The block of positions waiting links occupy, or nil when nothing is waiting.
+    static func movableBlock(waiting: [Bool]) -> ClosedRange<Int>? {
+        guard let first = waiting.firstIndex(of: true), let last = waiting.lastIndex(of: true) else { return nil }
+        return first...last
+    }
+
+    /// Where the link at `from` ends up when asked to go to `to`, or nil if it may not move.
+    static func destination(from: Int, to: Int, waiting: [Bool]) -> Int? {
+        guard waiting.indices.contains(from), waiting[from], let block = movableBlock(waiting: waiting) else { return nil }
+        let clamped = min(max(to, block.lowerBound), block.upperBound)
+        return clamped == from ? nil : clamped
+    }
+}
+
 // MARK: - Spring
 
 /// A critically damped spring (no oscillation) solved exactly, so it can be sampled at any time

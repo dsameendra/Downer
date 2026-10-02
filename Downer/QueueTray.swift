@@ -19,6 +19,7 @@ struct QueueTray: View {
     let onRetryAll: () -> Void
     let onReveal: () -> Void
     let onRevealJob: (UUID) -> Void
+    let onMove: (UUID, Int) -> Void
     let onDismiss: () -> Void
     /// 0 when peeking … 1 when fully open. The window behind dims with it.
     @Binding var expansion: CGFloat
@@ -46,6 +47,9 @@ struct QueueTray: View {
     @State private var driver = SpringDriver()
     @State private var probe = ScrollProbe()
     @State private var openRow: UUID?
+    @State private var reorder: RowReorder?
+    @State private var lifted: UUID?
+    @State private var rowHeights: [UUID: CGFloat] = [:]
     @State private var collapsed: Set<UUID> = []
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -247,32 +251,47 @@ struct QueueTray: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(jobs) { job in
+                    ForEach(Array(jobs.enumerated()), id: \.element.id) { index, job in
                         let open = openRow == job.id
                         let setOpen: (Bool) -> Void = { isOpen in
                             if isOpen { openRow = job.id } else if openRow == job.id { openRow = nil }
                         }
-                        if job.isPlaylist {
-                            PlaylistSection(
-                                job: job,
-                                isCollapsed: collapsed.contains(job.id),
-                                actions: swipeActions(for: job),
-                                isOpen: open,
-                                onOpenChange: setOpen,
-                                onToggle: { toggleCollapse(job.id) },
-                                onRemove: { onRemove(job.id) },
-                                onRetry: { onRetry(job.id) })
-                        } else {
-                            SwipeActionsRow(actions: swipeActions(for: job), isOpen: open, onOpenChange: setOpen) {
-                                JobRow(job: job, onRemove: { onRemove(job.id) }, onRetry: { onRetry(job.id) })
+                        Group {
+                            if job.isPlaylist {
+                                PlaylistSection(
+                                    job: job,
+                                    isCollapsed: collapsed.contains(job.id),
+                                    actions: swipeActions(for: job),
+                                    isOpen: open,
+                                    onOpenChange: setOpen,
+                                    onToggle: { toggleCollapse(job.id) },
+                                    onRemove: { onRemove(job.id) },
+                                    onRetry: { onRetry(job.id) })
+                            } else {
+                                SwipeActionsRow(actions: swipeActions(for: job), isOpen: open, onOpenChange: setOpen) {
+                                    JobRow(job: job, onRemove: { onRemove(job.id) }, onRetry: { onRetry(job.id) })
+                                }
                             }
-                            .id(job.id.uuidString)
                         }
+                        .modifier(
+                            ReorderableRow(
+                                id: job.id,
+                                shift: reorder?.shift(for: index) ?? 0,
+                                isLifted: lifted == job.id,
+                                isActive: reorder != nil,
+                                isMovable: job.state == .queued && !job.isResolving,
+                                position: reorderPosition(of: index),
+                                onBegin: { beginReorder(job.id) },
+                                onDrag: { moveReorder($0) },
+                                onEnd: { endReorder() },
+                                onStep: { step in stepReorder(job.id, by: step) }))
+                        .id(job.id.uuidString)
                     }
                 }
                 .padding(.top, 6)
                 .background(ScrollProbeView(probe: probe))
             }
+            .onPreferenceChange(RowHeightKey.self) { rowHeights = $0 }
             .scrollIndicators(.never)
             .defaultScrollAnchor(.top)
             .mask(
@@ -498,6 +517,50 @@ struct QueueTray: View {
 
     private func toggle() {
         animate(to: height > Self.peek + 1 ? Self.peek : Self.list)
+    }
+
+    // MARK: Reordering
+    /// "2 of 4" among the waiting links, for VoiceOver.
+    private func reorderPosition(of index: Int) -> (index: Int, count: Int)? {
+        let waiting = jobs.indices.filter { jobs[$0].state == .queued && !jobs[$0].isResolving }
+        guard let place = waiting.firstIndex(of: index) else { return nil }
+        return (place, waiting.count)
+    }
+
+    private func beginReorder(_ id: UUID) {
+        guard reorder == nil, let source = jobs.firstIndex(where: { $0.id == id }),
+            let bounds = QueueOrder.movableBlock(waiting: jobs.map { $0.state == .queued && !$0.isResolving }),
+            bounds.contains(source)
+        else { return }
+        let heights = jobs.map { rowHeights[$0.id] ?? 52 }
+        reorder = RowReorder(heights: heights, source: source, bounds: bounds)
+        lifted = id
+        openRow = nil
+        Haptics.tick()
+    }
+
+    private func moveReorder(_ translation: CGFloat) {
+        guard var model = reorder else { return }
+        let before = model.target
+        model.drag(to: translation)
+        reorder = model
+        if model.target != before { Haptics.tick() }
+    }
+
+    private func endReorder() {
+        guard let model = reorder, let id = lifted else { return }
+        withAnimation(Motion.standard(reduce: reduceMotion)) {
+            reorder = nil
+            lifted = nil
+            if model.target != model.source { onMove(id, model.target) }
+        }
+    }
+
+    /// Move up or down one place without dragging (VoiceOver and keyboard).
+    private func stepReorder(_ id: UUID, by step: Int) {
+        guard let index = jobs.firstIndex(where: { $0.id == id }) else { return }
+        withAnimation(Motion.standard(reduce: reduceMotion)) { onMove(id, index + step) }
+        Haptics.tick()
     }
 
     private func toggleCollapse(_ id: UUID) {
@@ -756,6 +819,73 @@ private struct RemoveButton: View {
         .help(label)
         .accessibilityLabel(label)
         .motion(Motion.quick, value: hovering)
+    }
+}
+
+private struct RowHeightKey: PreferenceKey {
+    static var defaultValue: [UUID: CGFloat] = [:]
+    static func reduce(value: inout [UUID: CGFloat], nextValue: () -> [UUID: CGFloat]) {
+        value.merge(nextValue()) { $1 }
+    }
+}
+
+/// Press and hold a waiting link, then drag it to change when it will download. The lifted row
+/// follows the pointer; the others slide aside to make room.
+private struct ReorderableRow: ViewModifier {
+    let id: UUID
+    let shift: CGFloat
+    let isLifted: Bool
+    let isActive: Bool
+    let isMovable: Bool
+    let position: (index: Int, count: Int)?
+    let onBegin: () -> Void
+    let onDrag: (CGFloat) -> Void
+    let onEnd: () -> Void
+    let onStep: (Int) -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(key: RowHeightKey.self, value: [id: proxy.size.height])
+                }
+            )
+            .scaleEffect(isLifted && !reduceMotion ? 1.025 : 1)
+            .shadow(color: .black.opacity(isLifted ? 0.28 : 0), radius: isLifted ? 14 : 0, y: isLifted ? 6 : 0)
+            .offset(y: shift)
+            .zIndex(isLifted ? 1 : 0)
+            // the lifted row follows the pointer exactly; the rest glide aside
+            .animation(isLifted ? nil : Motion.standard(reduce: reduceMotion), value: shift)
+            .animation(Motion.quick, value: isLifted)
+            .simultaneousGesture(isMovable ? hold : nil)
+            .modifier(MoveActions(position: isMovable ? position : nil, onStep: onStep))
+    }
+
+    private var hold: some Gesture {
+        LongPressGesture(minimumDuration: 0.28)
+            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .global))
+            .onChanged { value in
+                guard case .second(true, let drag) = value else { return }
+                if !isActive { onBegin() }
+                if let drag { onDrag(drag.translation.height) }
+            }
+            .onEnded { _ in onEnd() }
+    }
+}
+
+private struct MoveActions: ViewModifier {
+    let position: (index: Int, count: Int)?
+    let onStep: (Int) -> Void
+
+    func body(content: Content) -> some View {
+        if let position {
+            content
+                .accessibilityAction(named: Text("Move up")) { if position.index > 0 { onStep(-1) } }
+                .accessibilityAction(named: Text("Move down")) { if position.index < position.count - 1 { onStep(1) } }
+        } else {
+            content
+        }
     }
 }
 

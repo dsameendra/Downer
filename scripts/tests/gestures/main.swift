@@ -132,5 +132,34 @@ check("layout: a long swipe stretches only the last button", SwipeActionLayout.w
 check("layout: a short pull never shrinks the buttons", SwipeActionLayout.widths(count: 2, revealed: 40, chip: 72, spacing: 6) == [72, 72])
 check("layout: no actions, no widths", SwipeActionLayout.widths(count: 0, revealed: 100, chip: 72, spacing: 6).isEmpty)
 
+// MARK: reordering rows of different heights
+let hs: [CGFloat] = [52, 52, 100, 52, 52]
+var rr = RowReorder(heights: hs, source: 1, bounds: 1...4)!
+rr.drag(to: 0)
+check("reorder: at rest nothing moves", rr.target == 1 && (0..<5).allSatisfy { rr.shift(for: $0) == (($0 == 1) ? 0 : 0) })
+rr.drag(to: 40)
+check("reorder: not past the middle of the next row yet", rr.target == 1, "\(rr.target)")
+rr.drag(to: 100)
+check("reorder: past the tall row's middle takes its place", rr.target == 2, "\(rr.target)")
+check("reorder: the tall row moves up by the dragged row's height", rr.shift(for: 2) == -52 && rr.shift(for: 3) == 0)
+rr.drag(to: 1000)
+check("reorder: dragged row stops at the end of the block", rr.target == 4 && rr.offset == 204, "\(rr.target) \(rr.offset)")
+rr.drag(to: -1000)
+check("reorder: and at the start of the block (row 0 is fixed)", rr.target == 1 && rr.offset == 0, "\(rr.target) \(rr.offset)")
+var up = RowReorder(heights: hs, source: 3, bounds: 1...4)!
+up.drag(to: -60)
+check("reorder: dragging up past a tall row's middle", up.target == 2, "\(up.target)")
+check("reorder: the tall row moves down by the dragged row's height", up.shift(for: 2) == 52 && up.shift(for: 1) == 0)
+check("reorder: a row outside the block cannot be picked up", RowReorder(heights: hs, source: 0, bounds: 1...4) == nil)
+
+// MARK: queue order
+check("order: waiting links form the movable block", QueueOrder.movableBlock(waiting: [false, false, true, true, false, true]) == 2...5)
+check("order: nothing waiting, nothing to move", QueueOrder.movableBlock(waiting: [false, false]) == nil)
+check("order: a waiting link moves to a waiting slot", QueueOrder.destination(from: 3, to: 2, waiting: [false, true, true, true]) == 2)
+check("order: it cannot jump above the running link", QueueOrder.destination(from: 3, to: 0, waiting: [false, true, true, true]) == 1)
+check("order: it cannot go below the last waiting link", QueueOrder.destination(from: 1, to: 9, waiting: [false, true, true, false]) == 2)
+check("order: a running link cannot be moved", QueueOrder.destination(from: 0, to: 2, waiting: [false, true, true]) == nil)
+check("order: moving onto itself is nothing", QueueOrder.destination(from: 2, to: 2, waiting: [false, true, true]) == nil)
+
 print(failures == 0 ? "ALL PASS" : "\(failures) FAILURES")
 exit(failures == 0 ? 0 : 1)

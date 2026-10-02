@@ -124,6 +124,7 @@ struct MainAppView: View {
                     onRetryAll: { dl.retryAllFailed() },
                     onReveal: { dl.revealFiles() },
                     onRevealJob: { dl.reveal(job: $0) },
+                    onMove: { dl.move($0, toIndex: $1) },
                     onDismiss: { withAnimation(Motion.standard(reduce: reduceMotion)) { dl.clearFinished() } },
                     expansion: $trayExpansion,
                     startsOpen: DownloadManager.previewTrayOpen,
@@ -462,19 +463,14 @@ struct OptionRow: View {
     let options: [String]
     @Binding var selection: String
     var showsDivider = true
+    @State private var open = false
 
     var body: some View {
         HStack {
             Text(title)
                 .font(.system(size: 14))
             Spacer()
-            Menu {
-                Picker(title, selection: $selection) {
-                    ForEach(options, id: \.self) { Text($0).tag($0) }
-                }
-                .pickerStyle(.inline)
-                .labelsHidden()
-            } label: {
+            Button { open.toggle() } label: {
                 HStack(spacing: 6) {
                     Text(selection)
                         .font(.system(size: 13, weight: .medium))
@@ -487,12 +483,16 @@ struct OptionRow: View {
                 .padding(.leading, 12)
                 .padding(.trailing, 9)
                 .frame(height: 28)
-                .background(Color.primary.opacity(0.10), in: Capsule())
+                .contentShape(Capsule())
+                .downerGlass(in: Capsule(), interactive: true)
             }
-            .menuStyle(.button)
             .buttonStyle(.plain)
-            .menuIndicator(.hidden)
             .fixedSize()
+            .popover(isPresented: $open, arrowEdge: .bottom) {
+                OptionList(options: options, selection: $selection) { open = false }
+            }
+            .accessibilityLabel(title)
+            .accessibilityValue(selection)
         }
         .padding(.leading, 14)
         .padding(.trailing, 9)
@@ -502,6 +502,50 @@ struct OptionRow: View {
                 Divider().opacity(0.6).padding(.horizontal, 14)
             }
         }
+    }
+}
+
+/// The choices, as a short glass list. The one in use is marked; a tap picks and closes.
+private struct OptionList: View {
+    let options: [String]
+    @Binding var selection: String
+    let dismiss: () -> Void
+    @State private var hovered: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        VStack(spacing: 2) {
+            ForEach(options, id: \.self) { option in
+                let chosen = option == selection
+                Button {
+                    selection = option
+                    Haptics.tick()
+                    dismiss()
+                } label: {
+                    HStack(spacing: 8) {
+                        Text(option)
+                            .font(.system(size: 13, weight: chosen ? .semibold : .medium))
+                        Spacer(minLength: 16)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Brand.red)
+                            .opacity(chosen ? 1 : 0)
+                    }
+                    .padding(.horizontal, 12)
+                    .frame(height: 30)
+                    .frame(minWidth: 130)
+                    .background(
+                        Capsule().fill(Color.primary.opacity(chosen ? 0.14 : (hovered == option ? 0.08 : 0)))
+                    )
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .onHover { inside in hovered = inside ? option : (hovered == option ? nil : hovered) }
+                .accessibilityAddTraits(chosen ? .isSelected : [])
+            }
+        }
+        .padding(6)
+        .motion(Motion.quick, value: hovered)
     }
 }
 

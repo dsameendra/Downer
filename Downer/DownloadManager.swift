@@ -137,6 +137,16 @@ final class DownloadManager: ObservableObject {
         }
     }
 
+    /// Move a waiting link to another place in the queue. Links that are running or finished stay put,
+    /// and a waiting link never goes above them.
+    func move(_ id: UUID, toIndex: Int) {
+        let waiting = jobs.map { $0.state == .queued }
+        guard let from = jobs.firstIndex(where: { $0.id == id }),
+            let to = QueueOrder.destination(from: from, to: toIndex, waiting: waiting)
+        else { return }
+        jobs.insert(jobs.remove(at: from), at: to)
+    }
+
     /// Remove a waiting or finished job, or stop a running one.
     func remove(_ id: UUID) {
         if id == runningID {
