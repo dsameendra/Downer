@@ -1,16 +1,30 @@
 <div align="center">
 
-<img src="docs/screenshots/app-icon.png" alt="Downer app icon" width="128"/>
+<img src="docs/screenshots/app-icon.png" width="112" height="112" alt="Downer app icon">
 
 # Downer
 
-**A native macOS app for downloading video and audio. Paste a link, add as many more as you like, and let Downer work through them in order.**
+[![License: MIT](https://img.shields.io/badge/license-MIT-0074e8?style=flat-square)](LICENSE) ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-F0384A?style=flat-square) ![Liquid Glass](https://img.shields.io/badge/Liquid%20Glass-macOS%2026-30d158?style=flat-square)
 
-Built for macOS 26 with Liquid Glass. Works on macOS 14 and later.
+### Video and audio downloads, native to your Mac.
 
-<img src="docs/screenshots/main-dark.png" alt="Downer main window in dark mode" width="300"/>&nbsp;&nbsp;<img src="docs/screenshots/queue-dark.png" alt="Downer download queue with a playlist in progress" width="300"/>
+Paste a link, add as many more as you like, and let Downer work through them in order.
+
+_No terminal. No browser extension. Just a menu bar icon and a shortcut._
 
 </div>
+
+Downer is a lightweight native front end for `yt-dlp` and `ffmpeg`. Download video and audio, audio only, or
+video only, choose the resolution, container and audio quality, and queue single videos and playlists while
+something is already downloading. Built for macOS 26 with Liquid Glass, and it works on macOS 14 and later.
+
+<div align="center">
+
+**[What's new](#whats-new-in-203) · [Features](#features) · [Screenshots](#screenshots) · [Using Downer](#using-downer) · [Installation](#installation) · [Building from source](#building-from-source)**
+
+</div>
+
+https://github.com/user-attachments/assets/ce59fdfd-23f9-4584-b3f4-2466414c2a74
 
 ## What's new in 2.0.3
 
@@ -62,10 +76,6 @@ Built for macOS 26 with Liquid Glass. Works on macOS 14 and later.
 - Downer lives in the menu bar. Click the icon for a compact popover with a link field and a Download button.
 - Set a **global shortcut** in Settings. Copy a link anywhere, press the shortcut, and the popover opens with the link already filled in. Press Return to start.
 
-<div align="center">
-<img src="docs/screenshots/popover-dark.png" alt="The menu bar popover with a copied link filled in" width="320"/>
-</div>
-
 | Menu bar icon | Meaning |
 |---|---|
 | Double chevron | Idle |
@@ -74,15 +84,7 @@ Built for macOS 26 with Liquid Glass. Works on macOS 14 and later.
 | Check mark | Finished (shown for a couple of seconds) |
 | Orange dot | Something needs attention: a tool is missing, or a download failed |
 
-<div align="center">
-<img src="docs/screenshots/menubar-icons.png" alt="Menu bar icon states on a dark and a light menu bar" width="560"/>
-</div>
-
 ### Settings
-
-<div align="center">
-<img src="docs/screenshots/settings-dark.png" alt="Downer settings" width="300"/>
-</div>
 
 - **Appearance:** Device, Light or Dark, and an optional background glow.
 - **Global shortcut:** record any key combination.
@@ -95,11 +97,26 @@ Built for macOS 26 with Liquid Glass. Works on macOS 14 and later.
 
 <table align="center">
   <tr>
-    <td align="center"><img src="docs/screenshots/main-light.png" width="280" alt="Main window, light"/><br/>Light mode</td>
-    <td align="center"><img src="docs/screenshots/queue-peek.png" width="280" alt="Queue tray peeking"/><br/>The tray, tucked away</td>
-    <td align="center"><img src="docs/screenshots/queue-light.png" width="280" alt="Queue tray open, light"/><br/>The tray, open, in light mode</td>
+    <td align="center" valign="top" width="33%"><img src="docs/screenshots/main-dark.png" width="270" alt="The main window"/><br/><b>The main window</b><br/><sub>Paste a link, choose the type, resolution, container and quality.</sub></td>
+    <td align="center" valign="top" width="33%"><img src="docs/screenshots/main-light.png" width="270" alt="Light mode"/><br/><b>Light mode</b><br/><sub>The same window in light mode.</sub></td>
+    <td align="center" valign="top" width="33%"><img src="docs/screenshots/queue-peek.png" width="270" alt="The tray, tucked away"/><br/><b>The tray, tucked away</b><br/><sub>Overall progress and the current item, while you keep adding links.</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="33%"><img src="docs/screenshots/queue-dark.png" width="270" alt="The queue, open"/><br/><b>The queue, open</b><br/><sub>Every link and every video in a playlist, each with its own progress.</sub></td>
+    <td align="center" valign="top" width="33%"><img src="docs/screenshots/queue-light.png" width="270" alt="The queue, in light mode"/><br/><b>The queue, in light mode</b><br/><sub>Pull the tray up to see what is happening to each video.</sub></td>
+    <td align="center" valign="top" width="33%"><img src="docs/screenshots/settings-dark.png" width="270" alt="Settings"/><br/><b>Settings</b><br/><sub>Appearance, global shortcut, and the tools Downer needs.</sub></td>
   </tr>
 </table>
+
+<div align="center">
+
+<img src="docs/screenshots/popover-dark.png" width="360" alt="The menu bar popover"/><br/><b>The menu bar popover</b><br/><sub>Copy a link, press your shortcut, and it opens with the link filled in.</sub>
+
+<br/>
+
+<img src="docs/screenshots/menubar-icons.png" width="560" alt="Menu bar icon states on a dark and a light menu bar"/><br/><b>Menu bar icon states</b><br/><sub>Idle, downloading (percentage or item of total), finished, and needs attention.</sub>
+
+</div>
 
 ## Using Downer
 
