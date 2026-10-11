@@ -24,6 +24,8 @@ something is already downloading. Built for macOS 26 with Liquid Glass, and it w
 
 </div>
 
+https://github.com/user-attachments/assets/ce59fdfd-23f9-4584-b3f4-2466414c2a74
+
 ## What's new in 2.0.3
 
 - The panel at the bottom now grows to fit **Show in Finder** after a download, instead of letting it spill out.
